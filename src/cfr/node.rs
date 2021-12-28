@@ -1,7 +1,9 @@
 use ndarray::prelude::*;
 use ndarray_rand::rand_distr::num_traits::Zero;
 use ndarray_stats::QuantileExt;
+use serde::{Serialize, Deserialize};
 
+#[derive(Serialize, Deserialize)]
 pub struct StateNode<A> {
     /// Number of available actions
     num_actions: usize,

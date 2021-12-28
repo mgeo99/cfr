@@ -17,12 +17,21 @@ pub enum Tile {
     Letter(Letter),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placement {
+    pub word: String,
+    pub pos: Position,
+    pub dir: Direction
+}
+
 #[derive(Debug, Clone)]
 pub struct ScrabbleBoard {
     /// Actual letters on the board
     state: Vec<Vec<Tile>>,
     /// Position of all placed blanks
     blanks: Vec<Position>,
+    /// Moves placed on the board
+    pub placements: Vec<Placement>
 }
 
 impl ScrabbleBoard {
@@ -31,6 +40,7 @@ impl ScrabbleBoard {
         Self {
             state,
             blanks: Vec::new(),
+            placements: Vec::new()
         }
     }
 
@@ -62,6 +72,11 @@ impl ScrabbleBoard {
 
             curr_pos[dir] += 1;
         }
+        self.placements.push(Placement {
+            dir,
+            pos,
+            word: word.to_string()
+        });
         placed_letters
     }
 

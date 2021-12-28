@@ -132,6 +132,11 @@ impl GameState for ScrabbleState {
     fn state_key(&self) -> Self::Key {
         let mut key = String::new();
         key.push_str(format!("{}", self.curr_player).as_str());
+       /*let mut placed_words = self.board.placements.iter().map(|x| x.word.as_str()).collect::<Vec<_>>();
+        placed_words.sort_unstable();
+        for p in placed_words {
+            key.push_str(p);
+        }*/
         for row in 0..BOARD_SIZE {
             for col in 0..BOARD_SIZE {
                 let pos = Position { row, col };
@@ -224,7 +229,7 @@ impl GameState for ScrabbleState {
             return true;
         }
         // Check if any player can make a move
-        let vocab_ref = self.vocab.as_ref();
+        /*let vocab_ref = self.vocab.as_ref();
         let any_player_has_move = self
             .player_racks
             .iter()
@@ -233,9 +238,9 @@ impl GameState for ScrabbleState {
         // If there are any players that can make a move then it's not a terminal state
         if any_player_has_move {
             return false;
-        }
+        }*/
         // TODO: DO we need to check if the bag is empty??
-        true
+        false
     }
 
     fn get_reward(&self, player: usize) -> f32 {

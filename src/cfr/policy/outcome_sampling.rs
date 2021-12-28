@@ -46,6 +46,14 @@ where
         utility
     }
 
+    pub fn seen_states(&self) -> usize {
+        self.strategies.len()
+    }
+
+    pub fn strategies(&self) -> &HashMap<S::Key, StateNode<A>> {
+        &self.strategies
+    }
+
     /// Chance Sampling Monte-Carlo CFR
     /// Params:
     ///     game: Reference to the current game object

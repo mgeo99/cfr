@@ -17,11 +17,12 @@ use crate::tictactoe::TicTacToe;
 mod cfr;
 mod scrabble;
 mod tictactoe;
+mod utils;
 
 fn play_tictactoe() {
     let game = TicTacToe::new(3);
     let mut trainer = CFRTrainer::new(game);
-    trainer.train(1000000, 10000);
+    trainer.train(1000000, 10000, 100);
 
     let strat = trainer.get_strategies();
     println!("Number of Strategies: {}", strat.len());
@@ -83,7 +84,7 @@ fn play_scrabble() {
 
     let game = ScrabbleGame::new(2, Rc::new(vocab));
     let mut trainer = CFRTrainer::<_, f32>::new(game);
-    trainer.train(1000000, 1);
+    trainer.train(10000, 10, 1000);
 }
 
 fn main() {
