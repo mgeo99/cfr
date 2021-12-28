@@ -1,19 +1,26 @@
-use std::{fs::File, io::{BufReader, BufRead}};
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+};
 
+use fst::SetBuilder;
 use ndarray_rand::rand_distr::{Distribution, WeightedIndex};
 use state::{Game, GameState};
 #[macro_use]
 extern crate text_io;
-use crate::{cfr::CFRTrainer, tictactoe::TicTacToe, scrabble::dictionary::ScrabbleDictionary};
+use crate::{
+    cfr::CFRTrainer,
+    scrabble::{board::ScrabbleBoard, dictionary::ScrabbleDictionary, util::Letter},
+    tictactoe::TicTacToe,
+};
 
 mod cfr;
 mod node;
-mod state;
 mod scrabble;
+mod state;
 mod tictactoe;
 
 fn play_tictactoe() {
-
     let game = TicTacToe::new(3);
     let mut trainer = CFRTrainer::new(game);
     trainer.train(1000000, 10000);
@@ -30,7 +37,6 @@ fn play_tictactoe() {
             let option: usize = read!("{}\n");
             state = state.next_state(option).unwrap();
 
-            
             if !state.is_terminal() {
                 let key = state.state_key();
                 let node = strat.get(&key).unwrap();
@@ -69,19 +75,30 @@ fn main() {
         words.push(line.unwrap());
     }
 
+    words.sort_unstable();
+
     println!("Number of Words: {}", words.len());
 
-    let dictionary = ScrabbleDictionary::new(words);
+    let mut build = SetBuilder::memory();
+    build.extend_iter(words).unwrap();
+    let vocab = build.into_set();
 
-    loop {
-        println!("Enter a Word:");
-        let letters: String = read!("{}\n");
-        let valid_words = dictionary.find_valid_words(letters.as_str());
-        
-        for word in valid_words.iter() {
-            println!("\t{}", word);
-        }
-        println!("Found {} words:", valid_words.len());
+    let board = ScrabbleBoard::empty();
+
+    let result = board.calculate_moves(&[
+        Letter::Letter('C'),
+        Letter::Letter('A'),
+        Letter::Letter('B'),
+        Letter::Letter('G'),
+        Letter::Letter('E'),
+        Letter::Letter('A'),
+        Letter::Letter('T')
+    ], &vocab);
+
+    println!("Valid Moves: {}", result.len());
+
+    for m in result.iter().take(25) {
+        println!("{:?}", m);
     }
 }
 
