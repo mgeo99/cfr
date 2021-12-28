@@ -1,26 +1,29 @@
 use std::collections::HashMap;
 
-use ndarray::Array1;
-use ndarray_rand::rand_distr::{Distribution, WeightedIndex};
+use ndarray::NdFloat;
+use ndarray_rand::rand_distr::num_traits::Zero;
+use ndarray_rand::rand_distr::uniform::SampleUniform;
 
 use crate::cfr::policy::OutcomeSamplingPolicy;
 
 use super::node::StateNode;
 use super::state::{Game, GameState};
 
-pub struct CFRTrainer<G>
+pub struct CFRTrainer<G, A>
 where
     G: Game,
+    A: NdFloat + Zero + SampleUniform + Default + PartialOrd + for<'b> std::ops::AddAssign<&'b A>,
 {
     /// The game to train on
     game: G,
     /// Strategies for each player in the game
-    strategies: HashMap<<G::State as GameState>::Key, StateNode>,
+    strategies: HashMap<<G::State as GameState>::Key, StateNode<A>>,
 }
 
-impl<G> CFRTrainer<G>
+impl<G, A> CFRTrainer<G, A>
 where
     G: Game,
+    A: NdFloat + Zero + SampleUniform + Default + PartialOrd + for<'b> std::ops::AddAssign<&'b A>,
 {
     pub fn new(game: G) -> Self {
         Self {
@@ -29,16 +32,18 @@ where
         }
     }
 
-    pub fn get_strategies(&self) -> &HashMap<<G::State as GameState>::Key, StateNode> {
+    pub fn get_strategies(&self) -> &HashMap<<G::State as GameState>::Key, StateNode<A>> {
         &self.strategies
     }
     pub fn train(&mut self, rounds: usize, print_steps: usize) {
         println!("Starting CFR Trainer for {} rounds", rounds);
         let mut cumulative_utility = Vec::new();
-        cumulative_utility.resize(self.game.num_players(), 0.0);
+        cumulative_utility.resize(self.game.num_players(), A::zero());
 
-        let mut policy =
-            OutcomeSamplingPolicy::<G::State>::new(&mut self.strategies, self.game.num_actions());
+        let mut policy = OutcomeSamplingPolicy::<G::State, A>::new(
+            &mut self.strategies,
+            self.game.num_actions(),
+        );
 
         for i in 0..rounds {
             let initial_state = self.game.start();
@@ -62,6 +67,7 @@ where
         println!("CFR Training Complete");
     }
 
+    /*
     /// Chance Sampling Monte-Carlo CFR
     /// Params:
     ///     game: Reference to the current game object
@@ -328,5 +334,6 @@ where
 
         state_utility
     }
+    */
     */
 }

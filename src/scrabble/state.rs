@@ -88,9 +88,6 @@ impl MoveGrid {
                         // +1 because the best move is always an option
                         let idx =
                             util::coord_to_index(&[i, j, k], &[BOARD_SIZE, BOARD_SIZE, MAX_LENGTH]);
-                        if idx >= BOARD_SIZE * BOARD_SIZE * MAX_LENGTH + 1 {
-                            println!("Invalid Move: {:?} -> {}", &[i, j, k], idx);
-                        }
                         result.push(idx + 1);
                     }
                 }
@@ -109,6 +106,8 @@ pub struct ScrabbleState {
     player_racks: Vec<Rack>,
     /// Current scores for each player
     player_scores: Vec<i32>,
+    /// Flag to show whether or not each player is active
+    player_active: Vec<bool>,
     /// Currently active player
     curr_player: usize,
     /// Current player active move grid,
@@ -125,11 +124,14 @@ impl GameState for ScrabbleState {
     }
 
     fn valid_actions(&self) -> Vec<usize> {
-        self.curr_move_grid.get_valid_moves()
+        let mut valid = self.curr_move_grid.get_valid_moves();
+        valid.push(0);
+        valid
     }
 
     fn state_key(&self) -> Self::Key {
         let mut key = String::new();
+        key.push_str(format!("{}", self.curr_player).as_str());
         for row in 0..BOARD_SIZE {
             for col in 0..BOARD_SIZE {
                 let pos = Position { row, col };
@@ -153,36 +155,56 @@ impl GameState for ScrabbleState {
     }
 
     fn next_state(&self, action: usize) -> Option<Self> {
-        let selected_move = self.curr_move_grid.get_move(action);
-        println!("{:?}", selected_move);
         let mut next_bag = self.bag.clone();
         let mut next_board = self.board.clone();
         let mut next_racks = self.player_racks.clone();
         let mut next_scores = self.player_scores.clone();
+        let mut next_player_active = self.player_active.clone();
 
-        // Place the word
-        let used_letters =
-            next_board.place_word(&selected_move.word, selected_move.pos, selected_move.dir);
+        // We can only do this if we have available moves
+        if self.curr_move_grid.moves.len() > 0 {
+            let selected_move = self.curr_move_grid.get_move(action);
+            // Place the word
+            let used_letters =
+                next_board.place_word(&selected_move.word, selected_move.pos, selected_move.dir);
 
-        // Remove all the letters used to place the previous word
-        for l in used_letters.iter() {
-            next_racks[self.curr_player].remove_inplace(*l);
+            // Remove all the letters used to place the previous word
+            for l in used_letters.iter() {
+                next_racks[self.curr_player].remove_inplace(*l);
+            }
+            // Replenish that same player's rack with new letters
+            for l in next_bag.draw_tiles(used_letters.len()) {
+                next_racks[self.curr_player].add_inplace(l);
+            }
+            // Add to the current player's score
+            next_scores[self.curr_player] += selected_move.score;
         }
-        // Replenish that same player's rack with new letters
-        for l in next_bag.draw_tiles(used_letters.len()) {
-            next_racks[self.curr_player].add_inplace(l);
-        }
-        // Add to the current player's score
-        next_scores[self.curr_player] += selected_move.score;
 
-        // Now compute the moveset for the next player (wrapping)
-        let next_player = (self.curr_player + 1) % (self.player_racks.len() - 1);
-        let next_movegrid = MoveGrid::build(
-            &next_bag,
-            &next_board,
-            self.vocab.as_ref(),
-            &next_racks[next_player],
-        );
+        // Find the next available player until we run out of space
+        let mut next_player = (self.curr_player + 1) % self.player_racks.len();
+        let mut next_movegrid;
+        let mut inactive_players = next_player_active.iter().filter(|&x| !x == false).count();
+        loop {
+            next_movegrid = MoveGrid::build(
+                &next_bag,
+                &next_board,
+                self.vocab.as_ref(),
+                &next_racks[next_player],
+            );
+
+            if next_movegrid.moves.is_empty() {
+                next_player_active[next_player] = false;
+                inactive_players += 1;
+                next_player = (next_player + 1) % self.player_racks.len();
+            } else {
+                break;
+            }
+            if inactive_players >= next_player_active.len() {
+                break;
+            }
+        }
+
+        next_player_active[next_player] = next_movegrid.moves.len() > 0;
 
         Some(ScrabbleState {
             bag: next_bag,
@@ -191,11 +213,16 @@ impl GameState for ScrabbleState {
             curr_player: next_player,
             player_racks: next_racks,
             player_scores: next_scores,
+            player_active: next_player_active,
             vocab: self.vocab.clone(),
         })
     }
 
     fn is_terminal(&self) -> bool {
+        // If nobody is active then we are in a terminal state
+        if !self.player_active.iter().all(|x| *x) {
+            return true;
+        }
         // Check if any player can make a move
         let vocab_ref = self.vocab.as_ref();
         let any_player_has_move = self
@@ -268,6 +295,7 @@ impl Game for ScrabbleGame {
             curr_player: 0,
             player_racks: racks,
             player_scores: scores,
+            player_active: vec![true; self.n_players],
             board,
             vocab: self.vocab.clone(),
         }

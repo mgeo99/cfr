@@ -65,7 +65,7 @@ fn play_tictactoe() {
     }
 }
 
-fn main() {
+fn play_scrabble() {
     let file = File::open("words.txt").unwrap();
     let reader = BufReader::new(file);
     let mut words = Vec::new();
@@ -82,9 +82,13 @@ fn main() {
     let vocab = build.into_set();
 
     let game = ScrabbleGame::new(2, Rc::new(vocab));
-    let mut trainer = CFRTrainer::new(game);
-    trainer.train(1000000, 100);
+    let mut trainer = CFRTrainer::<_, f32>::new(game);
+    trainer.train(1000000, 1);
+}
 
+fn main() {
+    //play_tictactoe();
+    play_scrabble();
 }
 
 // 15x15x26
