@@ -67,11 +67,15 @@ fn play_tictactoe() {
 }
 
 fn play_scrabble() {
-    let file = File::open("words.txt").unwrap();
+    let file = File::open("words_small.txt").unwrap();
     let reader = BufReader::new(file);
     let mut words = Vec::new();
     for line in reader.lines() {
-        words.push(line.unwrap());
+        let word = line.unwrap().to_uppercase();
+        if word.chars().count() < 2 {
+            continue;
+        }
+        words.push(word);
     }
 
     words.sort_unstable();
