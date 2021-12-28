@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use std::rc::Rc;
 
 use fst::SetBuilder;
 use ndarray_rand::rand_distr::{Distribution, WeightedIndex};
@@ -9,6 +10,7 @@ use crate::cfr::state::{Game, GameState};
 use crate::cfr::CFRTrainer;
 use crate::scrabble::bag::Bag;
 use crate::scrabble::board::ScrabbleBoard;
+use crate::scrabble::state::ScrabbleGame;
 use crate::scrabble::util::Letter;
 use crate::tictactoe::TicTacToe;
 
@@ -79,28 +81,10 @@ fn main() {
     build.extend_iter(words).unwrap();
     let vocab = build.into_set();
 
-    let board = ScrabbleBoard::empty();
-    let bag = Bag::default();
-    /*let result = board.calculate_moves(
-        &[
-            Letter::Letter('C'),
-            Letter::Letter('A'),
-            Letter::Letter('B'),
-            Letter::Letter('G'),
-            Letter::Letter('E'),
-            Letter::Letter('A'),
-            Letter::Letter('T'),
-            Letter::Blank,
-        ],
-        &vocab,
-        &bag
-    );
+    let game = ScrabbleGame::new(2, Rc::new(vocab));
+    let mut trainer = CFRTrainer::new(game);
+    trainer.train(1000000, 100);
 
-    println!("Valid Moves: {}", result.len());
-
-    for m in result.iter().take(25) {
-        println!("{:?}", m);
-    }*/
 }
 
 // 15x15x26

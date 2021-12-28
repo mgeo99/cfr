@@ -2,24 +2,51 @@ use std::collections::HashMap;
 
 use rand::prelude::SliceRandom;
 
-#[derive(Debug)]
+use super::util::Letter;
+
+#[derive(Debug, Clone)]
 pub struct Bag {
     /// Alphabetic characters in the bag
-    alph: [char; 27],
+    alph: [Letter; 27],
     /// Score associated with each
     amts: [usize; 27],
     values: [i32; 27],
-    scores: HashMap<char, i32>,
+    scores: HashMap<Letter, i32>,
     random: bool,
-    pub distribution: Vec<char>,
+    pub distribution: Vec<Letter>,
 }
 
 impl Bag {
     pub fn default() -> Bag {
         let mut bag = Bag {
             alph: [
-                'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-                'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '?',
+                'A'.into(),
+                'B'.into(),
+                'C'.into(),
+                'D'.into(),
+                'E'.into(),
+                'F'.into(),
+                'G'.into(),
+                'H'.into(),
+                'I'.into(),
+                'J'.into(),
+                'K'.into(),
+                'L'.into(),
+                'M'.into(),
+                'N'.into(),
+                'O'.into(),
+                'P'.into(),
+                'Q'.into(),
+                'R'.into(),
+                'S'.into(),
+                'T'.into(),
+                'U'.into(),
+                'V'.into(),
+                'W'.into(),
+                'X'.into(),
+                'Y'.into(),
+                'Z'.into(),
+                Letter::Blank,
             ],
             amts: [
                 9, 2, 2, 4, 12, 2, 3, 2, 9, 1, 1, 4, 2, 6, 8, 2, 1, 6, 4, 6, 4, 2, 2, 1, 2, 1, 2,
@@ -47,7 +74,7 @@ impl Bag {
         bag
     }
 
-    pub fn new_with_order(order: &Vec<char>) -> Bag {
+    pub fn new_with_order(order: &Vec<Letter>) -> Bag {
         let mut b = Bag::default();
         b.distribution = order.to_vec();
         b.random = false;
@@ -58,15 +85,15 @@ impl Bag {
         self.distribution.is_empty()
     }
 
-    pub fn score(&self, c: char) -> i32 {
+    pub fn score(&self, c: Letter) -> i32 {
         match self.scores.get(&c) {
             Some(i) => *i,
             None => 0,
         }
     }
 
-    pub fn draw_tiles(&mut self, n: usize) -> Vec<char> {
-        let tiles: Vec<char>;
+    pub fn draw_tiles(&mut self, n: usize) -> Vec<Letter> {
+        let tiles: Vec<Letter>;
         if self.random {
             tiles = self
                 .distribution

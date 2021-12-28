@@ -34,7 +34,7 @@ impl Position {
     pub fn next(&self, dir: Direction) -> Option<Position> {
         match dir {
             Direction::Across => {
-                if self.col < BOARD_SIZE {
+                if self.col < BOARD_SIZE - 1 {
                     Some(Position {
                         row: self.row,
                         col: self.col + 1,
@@ -44,7 +44,7 @@ impl Position {
                 }
             }
             Direction::Down => {
-                if self.row < BOARD_SIZE {
+                if self.row < BOARD_SIZE - 1 {
                     Some(Position {
                         row: self.row + 1,
                         col: self.col,
@@ -83,6 +83,7 @@ impl Position {
     /// Returns all the valid adjacent positions to this position
     pub fn adjacent(&self) -> Vec<Position> {
         let mut result = Vec::new();
+
         for d in Direction::iter() {
             if let Some(pos) = self.next(*d) {
                 result.push(pos);
@@ -110,6 +111,62 @@ impl Position {
             }
         }
         Some(p)
+    }
+
+    /// Forward iterator starting at the current position
+    pub fn iter_next(&self, dir: Direction) -> NextPositionIter {
+        NextPositionIter::new(*self, dir)
+    }
+
+    /// Backward iterator starting at the current position
+    pub fn iter_prev(&self, dir: Direction) -> PrevPositionIter {
+        PrevPositionIter::new(*self, dir)
+    }
+}
+
+pub struct NextPositionIter {
+    curr: Position,
+    dir: Direction,
+}
+
+impl NextPositionIter {
+    pub fn new(start: Position, dir: Direction) -> Self {
+        Self { curr: start, dir }
+    }
+}
+
+impl Iterator for NextPositionIter {
+    type Item = Position;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.curr.next(self.dir) {
+            self.curr = next;
+            return Some(next);
+        }
+        None
+    }
+}
+
+pub struct PrevPositionIter {
+    curr: Position,
+    dir: Direction,
+}
+
+impl PrevPositionIter {
+    pub fn new(start: Position, dir: Direction) -> Self {
+        Self { curr: start, dir }
+    }
+}
+
+impl Iterator for PrevPositionIter {
+    type Item = Position;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(next) = self.curr.prev(self.dir) {
+            self.curr = next;
+            return Some(next);
+        }
+        None
     }
 }
 
@@ -184,6 +241,15 @@ impl Letter {
     }
 }
 
+impl From<char> for Letter {
+    fn from(c: char) -> Self {
+        match c {
+            '?' => Self::Blank,
+            _ => Self::Letter(c),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SquareEffect {
     DoubleWord,
@@ -195,25 +261,26 @@ pub enum SquareEffect {
 
 /// Takes array dimensions and computes a stride
 pub fn dim_to_stride(dim: &[usize]) -> Vec<usize> {
-    let mut stride = Vec::new();
-    stride.push(1);
-    for i in 0..dim.len() - 1 {
-        stride.push(stride[i] * dim[i]);
+    let mut strides = Vec::with_capacity(dim.len());
+
+    let mut current_stride = 1;
+    for i in dim.iter().rev() {
+        strides.insert(0, current_stride);
+        current_stride *= i;
     }
-    stride.reverse();
-    stride
+
+    strides
 }
 
 /// Utility function to convert a N-d index into a 1d index given a stride
 /// that represents the bounds of the parent grid
 pub fn coord_to_index(coord: &[usize], dim: &[usize]) -> usize {
-    let mut idx = 0;
+    let mut index = 0;
     let stride = dim_to_stride(dim);
-    
-    for i in 0..coord.len() {
-        idx += stride[i] * coord[i];
+    for (i, idx) in coord.iter().enumerate() {
+        index += idx * stride[i];
     }
-    idx
+    index
 }
 
 /// Reverse of coord to index
@@ -223,7 +290,6 @@ pub fn index_to_coord(idx: usize, dim: &[usize]) -> Vec<usize> {
     for i in 0..dim.len() {
         let partial_idx = (idx / stride[i]) % dim[i];
         coord.push(partial_idx);
-        
     }
     coord
 }
@@ -239,19 +305,17 @@ mod tests {
         let coords: Vec<&[usize]> = vec![
             &[1, 5], // random position in the middle
             &[2, 2], // Last index
-            &[0, 0, 1]
+            &[0, 0, 1],
+            &[7, 7, 4],
         ];
         let stride: Vec<&[usize]> = vec![
-            &[15, 15],   // 15x15 grid
-            &[3, 3],     // 9x9 grid
-            &[3, 3, 3]
+            &[15, 15], // 15x15 grid
+            &[3, 3],   // 9x9 grid
+            &[3, 3, 3],
+            &[15, 15, 7],
         ];
 
-        let expected = vec![
-            20,
-            8,
-            1
-        ];
+        let expected = vec![20, 8, 1, 788];
 
         for i in 0..coords.len() {
             let actual = coord_to_index(coords[i], stride[i]);
@@ -267,13 +331,11 @@ mod tests {
             vec![0, 1, 3],
             vec![1, 5], // random position in the middle
             vec![2, 2], // Last index
-            
         ];
         let dims: Vec<&[usize]> = vec![
             &[15, 15, 5],
-            &[15, 15],   // 15x15 grid
-            &[3, 3],     // 9x9 grid
-            
+            &[15, 15], // 15x15 grid
+            &[3, 3],   // 9x9 grid
         ];
 
         for i in 0..coords.len() {

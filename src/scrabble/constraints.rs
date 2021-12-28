@@ -55,9 +55,10 @@ impl ConstraintBoard {
         for i in 0..BOARD_SIZE {
             let mut tile_buffer = [Tile::Empty; BOARD_SIZE];
             let mut curr_pos = pos.clone();
+            
             for j in 0..BOARD_SIZE {
                 tile_buffer[j] = curr_board[curr_pos].clone();
-                curr_pos = curr_pos.next(dir).expect("Invalid array bounds");
+                curr_pos[dir] += 1;
             }
 
             let mut constraint_buffer = [ConstrainedTile::Letters(LetterSet::empty()); BOARD_SIZE];
@@ -65,15 +66,15 @@ impl ConstraintBoard {
             for j in 0..BOARD_SIZE {
                 state[j][i] = constraint_buffer[j];
             }
-            pos = pos.next(dir.flip()).unwrap();
+            pos[dir.flip()] += 1;
         }
 
         Self { dir, state }
     }
 
     fn is_empty(&self) -> bool {
-        for i in 0..15 {
-            for j in 0..15 {
+        for i in 0..BOARD_SIZE {
+            for j in 0..BOARD_SIZE {
                 if let ConstrainedTile::Filled(_) = self.state[i][j] {
                     return false;
                 }
@@ -108,7 +109,7 @@ impl ConstraintBoard {
                     }
                 }
 
-                if head.0[self.dir.flip()] >= 15 {
+                if head.0[self.dir.flip()] >= BOARD_SIZE {
                     return None;
                 }
 
@@ -118,7 +119,7 @@ impl ConstraintBoard {
 
                 // find minimum length to be attached: first square that is filled or that have constraints (some perpendicular word)
                 let mut end = place.clone();
-                while end.0[self.dir.flip()] < 15 {
+                while end.0[self.dir.flip()] < BOARD_SIZE {
                     if is_empty
                         && end.0
                             == (Position {

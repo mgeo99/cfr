@@ -1,3 +1,5 @@
+use super::util::Letter;
+
 #[derive(Debug, Clone)]
 pub struct Rack {
     /// Histogram count of each letter in the rack
@@ -17,6 +19,31 @@ impl Rack {
             n_total,
         }
     }
+
+    pub fn empty() -> Self {
+        Self::new([0;256], 0)
+    }
+
+    /// Adds an additional letter in-place. Should only be used when handling state transitions
+    pub fn add_inplace(&mut self, letter: Letter) {
+        match letter {
+            Letter::Blank => self.n_blanks += 1,
+            Letter::Letter(l) => self.letters[l as usize] += 1
+        };
+        self.n_total += 1;
+    }
+
+    /// Does an in-place removal of the provided letter without any checking.
+    /// Should only be used when handling state transitions in the game itself
+    pub fn remove_inplace(&mut self, letter: Letter) {
+        match letter {
+            Letter::Blank => self.n_blanks -= 1,
+            Letter::Letter(l) => self.letters[l as usize] -= 1
+        };
+        self.n_total -= 1;
+    }
+
+    /// Used for automaton state searching
     pub fn remove(&self, letter: char) -> Option<Self> {
         if self.letters[letter as usize] > 0 {
             let mut tmp = self.clone();
@@ -27,6 +54,8 @@ impl Rack {
             None
         }
     }
+
+    /// Used for automaton state searching
     pub fn remove_wildcard(&self) -> Option<Self> {
         if self.n_blanks > 0 {
             let mut tmp = self.clone();

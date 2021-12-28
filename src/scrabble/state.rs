@@ -3,7 +3,7 @@ use std::rc::Rc;
 use fst::Set;
 use rand::prelude::SliceRandom;
 
-use crate::cfr::state::GameState;
+use crate::cfr::state::{Game, GameState};
 use crate::scrabble::{util, BOARD_SIZE};
 
 use super::bag::Bag;
@@ -14,6 +14,10 @@ use super::util::{Letter, Move, Position, SquareEffect};
 /// Grid of all possible moves the player can make in the current state.
 /// Once a player chooses an action, a random word is sampled from the list of available words
 /// and applied to the board
+///
+
+const MAX_LENGTH: usize = 7;
+
 pub struct MoveGrid {
     /// IDs of each move in the master move array
     /// 15x15x5 (maybe add an extra dimension to allow the choice of direction as well)
@@ -26,16 +30,21 @@ pub struct MoveGrid {
 
 impl MoveGrid {
     pub fn build(bag: &Bag, curr_board: &ScrabbleBoard, vocab: &Set<Vec<u8>>, rack: &Rack) -> Self {
-        let mut move_ids = vec![vec![vec![Vec::new(); 5]; BOARD_SIZE]; BOARD_SIZE];
-        let mut max_scores = vec![vec![vec![0; 5]; BOARD_SIZE]; BOARD_SIZE];
+        let mut move_ids = vec![vec![vec![Vec::new(); MAX_LENGTH]; BOARD_SIZE]; BOARD_SIZE];
+        let mut max_scores = vec![vec![vec![0; MAX_LENGTH]; BOARD_SIZE]; BOARD_SIZE];
         let mut best_move_id = 0;
         let mut best_move_score = 0;
         let moves = curr_board.calculate_moves(rack, vocab, bag);
         for (i, m) in moves.iter().enumerate() {
             // Only store the best possible moves at each length
-            if max_scores[m.pos.row][m.pos.col][m.word.len()] < m.score {
-                max_scores[m.pos.row][m.pos.col][m.word.len()] = m.score;
-                move_ids[m.pos.row][m.pos.col][m.word.len()].clear();
+            let len_idx = m.word.len() - 2;
+            if len_idx >= MAX_LENGTH {
+                continue;
+            }
+
+            if max_scores[m.pos.row][m.pos.col][len_idx] < m.score {
+                max_scores[m.pos.row][m.pos.col][len_idx] = m.score;
+                move_ids[m.pos.row][m.pos.col][len_idx].clear();
             }
             // Track the best overall move
             if m.score > best_move_score {
@@ -43,7 +52,7 @@ impl MoveGrid {
                 best_move_id = i;
             }
 
-            move_ids[m.pos.row][m.pos.col][m.word.len()].push(i);
+            move_ids[m.pos.row][m.pos.col][len_idx].push(i);
         }
 
         Self {
@@ -60,26 +69,28 @@ impl MoveGrid {
         }
         let idx = action_id - 1;
 
-        let coord = util::index_to_coord(idx, &[BOARD_SIZE, BOARD_SIZE, 5]);
+        let coord = util::index_to_coord(idx, &[BOARD_SIZE, BOARD_SIZE, MAX_LENGTH]);
 
         let valid_moves = &self.move_ids[coord[0]][coord[1]][coord[2]];
         // Pick a random move
         let mut rng = rand::thread_rng();
-        let selected_move = *valid_moves.choose(&mut rng).unwrap();
-        &self.moves[selected_move]
+        let selected_move = valid_moves.choose(&mut rng).unwrap();
+        &self.moves[*selected_move]
     }
 
     // TODO: Add an offset by 1 that basically means always take the highest scoring move
     pub fn get_valid_moves(&self) -> Vec<usize> {
         let mut result = Vec::new();
-        let max_i = self.move_ids.len();
         for i in 0..self.move_ids.len() {
-            let max_j = self.move_ids[i].len();
             for j in 0..self.move_ids[i].len() {
                 for k in 0..self.move_ids[i][j].len() {
-                    let idx = i * max_i + j * max_j + k;
                     if self.move_ids[i][j][k].len() > 0 {
                         // +1 because the best move is always an option
+                        let idx =
+                            util::coord_to_index(&[i, j, k], &[BOARD_SIZE, BOARD_SIZE, MAX_LENGTH]);
+                        if idx >= BOARD_SIZE * BOARD_SIZE * MAX_LENGTH + 1 {
+                            println!("Invalid Move: {:?} -> {}", &[i, j, k], idx);
+                        }
                         result.push(idx + 1);
                     }
                 }
@@ -142,7 +153,46 @@ impl GameState for ScrabbleState {
     }
 
     fn next_state(&self, action: usize) -> Option<Self> {
-        todo!()
+        let selected_move = self.curr_move_grid.get_move(action);
+        println!("{:?}", selected_move);
+        let mut next_bag = self.bag.clone();
+        let mut next_board = self.board.clone();
+        let mut next_racks = self.player_racks.clone();
+        let mut next_scores = self.player_scores.clone();
+
+        // Place the word
+        let used_letters =
+            next_board.place_word(&selected_move.word, selected_move.pos, selected_move.dir);
+
+        // Remove all the letters used to place the previous word
+        for l in used_letters.iter() {
+            next_racks[self.curr_player].remove_inplace(*l);
+        }
+        // Replenish that same player's rack with new letters
+        for l in next_bag.draw_tiles(used_letters.len()) {
+            next_racks[self.curr_player].add_inplace(l);
+        }
+        // Add to the current player's score
+        next_scores[self.curr_player] += selected_move.score;
+
+        // Now compute the moveset for the next player (wrapping)
+        let next_player = (self.curr_player + 1) % (self.player_racks.len() - 1);
+        let next_movegrid = MoveGrid::build(
+            &next_bag,
+            &next_board,
+            self.vocab.as_ref(),
+            &next_racks[next_player],
+        );
+
+        Some(ScrabbleState {
+            bag: next_bag,
+            board: next_board,
+            curr_move_grid: next_movegrid,
+            curr_player: next_player,
+            player_racks: next_racks,
+            player_scores: next_scores,
+            vocab: self.vocab.clone(),
+        })
     }
 
     fn is_terminal(&self) -> bool {
@@ -151,17 +201,77 @@ impl GameState for ScrabbleState {
         let any_player_has_move = self
             .player_racks
             .iter()
-            .all(|x| self.board.is_move_possible(x, vocab_ref, &self.bag));
-        if !any_player_has_move {
+            .any(|x| self.board.is_move_possible(x, vocab_ref));
+
+        // If there are any players that can make a move then it's not a terminal state
+        if any_player_has_move {
             return false;
         }
-        if !self.bag.is_empty() {
-            return false;
-        }
+        // TODO: DO we need to check if the bag is empty??
         true
     }
 
     fn get_reward(&self, player: usize) -> f32 {
         self.player_scores[player] as f32
     }
+}
+
+pub struct ScrabbleGame {
+    /// Number of players in the game
+    n_players: usize,
+    /// Number of valid actions
+    n_actions: usize,
+    /// Vocabulary tied to the game
+    vocab: Rc<Set<Vec<u8>>>,
+}
+
+impl ScrabbleGame {
+    pub fn new(n_players: usize, vocab: Rc<Set<Vec<u8>>>) -> Self {
+        Self {
+            n_actions: BOARD_SIZE * BOARD_SIZE * MAX_LENGTH + 1,
+            n_players,
+            vocab,
+        }
+    }
+}
+
+impl Game for ScrabbleGame {
+    type State = ScrabbleState;
+
+    fn num_players(&self) -> usize {
+        self.n_players
+    }
+
+    fn num_actions(&self) -> usize {
+        self.n_actions
+    }
+
+    fn start(&self) -> Self::State {
+        let mut racks = vec![];
+        let scores = vec![0; self.n_players];
+        let mut bag = Bag::default();
+
+        for _ in 0..self.n_players {
+            let mut rack = Rack::empty();
+            for l in bag.draw_tiles(7) {
+                rack.add_inplace(l);
+            }
+            racks.push(rack);
+        }
+        // Compute the initial move grid for the first player
+        let board = ScrabbleBoard::empty();
+        let move_grid = MoveGrid::build(&bag, &board, self.vocab.as_ref(), &racks[0]);
+
+        ScrabbleState {
+            bag,
+            curr_move_grid: move_grid,
+            curr_player: 0,
+            player_racks: racks,
+            player_scores: scores,
+            board,
+            vocab: self.vocab.clone(),
+        }
+    }
+
+    fn reset(&mut self) {}
 }
