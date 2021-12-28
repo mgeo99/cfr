@@ -1,8 +1,7 @@
-use std::{collections::HashSet, slice::Iter};
+use std::collections::HashSet;
+use std::slice::Iter;
 
 use super::BOARD_SIZE;
-
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
@@ -106,8 +105,7 @@ impl Position {
         for _ in 0..n {
             if let Some(next) = p.next(dir) {
                 p = next;
-            }
-            else {
+            } else {
                 return None;
             }
         }
@@ -121,38 +119,31 @@ impl std::ops::Index<Direction> for Position {
     fn index(&self, index: Direction) -> &Self::Output {
         match index {
             Direction::Across => &self.col,
-            Direction::Down => &self.row
+            Direction::Down => &self.row,
         }
     }
 }
 
-
 impl std::ops::IndexMut<Direction> for Position {
-
     fn index_mut(&mut self, index: Direction) -> &mut Self::Output {
         match index {
             Direction::Across => &mut self.col,
-            Direction::Down => &mut self.row
+            Direction::Down => &mut self.row,
         }
     }
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct Move {
     pub word: String,
     pub pos: Position,
     pub dir: Direction,
-    pub score: i32
+    pub score: i32,
 }
 
 impl Move {
     pub fn iter(&self) -> IterMove {
-        IterMove {
-            _m: self,
-            _curr: 0
-        }
+        IterMove { _m: self, _curr: 0 }
     }
 }
 
@@ -178,24 +169,20 @@ impl<'a> Iterator for IterMove<'a> {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Letter {
     Blank,
-    Letter(char)
+    Letter(char),
 }
 
 impl Letter {
     pub fn as_index(&self) -> usize {
         match self {
             Self::Blank => 27,
-            Self::Letter(l) => *l as usize - 'A' as usize
+            Self::Letter(l) => *l as usize - 'A' as usize,
         }
     }
 }
-
-
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SquareEffect {
@@ -203,5 +190,96 @@ pub enum SquareEffect {
     DoubleLetter,
     TripleWord,
     TripleLetter,
-    Center
+    Center,
+}
+
+/// Takes array dimensions and computes a stride
+pub fn dim_to_stride(dim: &[usize]) -> Vec<usize> {
+    let mut stride = Vec::new();
+    stride.push(1);
+    for i in 0..dim.len() - 1 {
+        stride.push(stride[i] * dim[i]);
+    }
+    stride.reverse();
+    stride
+}
+
+/// Utility function to convert a N-d index into a 1d index given a stride
+/// that represents the bounds of the parent grid
+pub fn coord_to_index(coord: &[usize], dim: &[usize]) -> usize {
+    let mut idx = 0;
+    let stride = dim_to_stride(dim);
+    
+    for i in 0..coord.len() {
+        idx += stride[i] * coord[i];
+    }
+    idx
+}
+
+/// Reverse of coord to index
+pub fn index_to_coord(idx: usize, dim: &[usize]) -> Vec<usize> {
+    let mut coord = vec![];
+    let stride = dim_to_stride(dim);
+    for i in 0..dim.len() {
+        let partial_idx = (idx / stride[i]) % dim[i];
+        coord.push(partial_idx);
+        
+    }
+    coord
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::scrabble::util::index_to_coord;
+
+    use super::coord_to_index;
+
+    #[test]
+    fn test_coord_to_index() {
+        let coords: Vec<&[usize]> = vec![
+            &[1, 5], // random position in the middle
+            &[2, 2], // Last index
+            &[0, 0, 1]
+        ];
+        let stride: Vec<&[usize]> = vec![
+            &[15, 15],   // 15x15 grid
+            &[3, 3],     // 9x9 grid
+            &[3, 3, 3]
+        ];
+
+        let expected = vec![
+            20,
+            8,
+            1
+        ];
+
+        for i in 0..coords.len() {
+            let actual = coord_to_index(coords[i], stride[i]);
+            assert_eq!(actual, expected[i]);
+        }
+    }
+
+    #[test]
+    fn test_coord_index_invertible() {
+        // Assumes that the above test case passes.
+        // Just makes sure th
+        let coords = vec![
+            vec![0, 1, 3],
+            vec![1, 5], // random position in the middle
+            vec![2, 2], // Last index
+            
+        ];
+        let dims: Vec<&[usize]> = vec![
+            &[15, 15, 5],
+            &[15, 15],   // 15x15 grid
+            &[3, 3],     // 9x9 grid
+            
+        ];
+
+        for i in 0..coords.len() {
+            let idx = coord_to_index(&coords[i], dims[i]);
+            let actual = index_to_coord(idx, dims[i]);
+            assert_eq!(actual, coords[i]);
+        }
+    }
 }

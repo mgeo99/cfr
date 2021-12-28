@@ -1,23 +1,19 @@
-use std::{
-    fs::File,
-    io::{BufRead, BufReader},
-};
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 use fst::SetBuilder;
 use ndarray_rand::rand_distr::{Distribution, WeightedIndex};
-use state::{Game, GameState};
 #[macro_use]
 extern crate text_io;
-use crate::{
-    cfr::CFRTrainer,
-    scrabble::{board::ScrabbleBoard, dictionary::ScrabbleDictionary, util::Letter},
-    tictactoe::TicTacToe,
-};
+use crate::cfr::state::{Game, GameState};
+use crate::cfr::CFRTrainer;
+use crate::scrabble::bag::Bag;
+use crate::scrabble::board::ScrabbleBoard;
+use crate::scrabble::util::Letter;
+use crate::tictactoe::TicTacToe;
 
 mod cfr;
-mod node;
 mod scrabble;
-mod state;
 mod tictactoe;
 
 fn play_tictactoe() {
@@ -84,22 +80,27 @@ fn main() {
     let vocab = build.into_set();
 
     let board = ScrabbleBoard::empty();
-
-    let result = board.calculate_moves(&[
-        Letter::Letter('C'),
-        Letter::Letter('A'),
-        Letter::Letter('B'),
-        Letter::Letter('G'),
-        Letter::Letter('E'),
-        Letter::Letter('A'),
-        Letter::Letter('T')
-    ], &vocab);
+    let bag = Bag::default();
+    /*let result = board.calculate_moves(
+        &[
+            Letter::Letter('C'),
+            Letter::Letter('A'),
+            Letter::Letter('B'),
+            Letter::Letter('G'),
+            Letter::Letter('E'),
+            Letter::Letter('A'),
+            Letter::Letter('T'),
+            Letter::Blank,
+        ],
+        &vocab,
+        &bag
+    );
 
     println!("Valid Moves: {}", result.len());
 
     for m in result.iter().take(25) {
         println!("{:?}", m);
-    }
+    }*/
 }
 
 // 15x15x26

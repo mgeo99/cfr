@@ -2,7 +2,9 @@ use std::rc::Rc;
 
 use fst::Automaton;
 
-use super::{constraints::ConstrainedTile, util::Letter};
+use super::constraints::ConstrainedTile;
+use super::rack::Rack;
+use super::util::Letter;
 
 /*
     Automaton implemented to assist with rapidly searching over all the available positions
@@ -11,52 +13,10 @@ use super::{constraints::ConstrainedTile, util::Letter};
 
 */
 
-#[derive(Debug, Clone)]
-pub struct TrayRemaining {
-    letters: [u8; 256],
-    n_blanks: u8,
-    /// The total number of remaining letters+wildcards to play
-    n_total: u32,
-}
-
-impl TrayRemaining {
-    pub fn remove(&self, letter: char) -> Option<TrayRemaining> {
-        if self.letters[letter as usize] > 0 {
-            let mut tmp = self.clone();
-            tmp.letters[letter as usize] -= 1;
-            tmp.n_total -= 1;
-            Some(tmp)
-        } else {
-            None
-        }
-    }
-    pub fn remove_wildcard(&self) -> Option<TrayRemaining> {
-        if self.n_blanks > 0 {
-            let mut tmp = self.clone();
-            tmp.n_blanks -= 1;
-            tmp.n_total -= 1;
-            Some(tmp)
-        } else {
-            None
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlankAssignmentList {
     Empty,
-    Elem(char, Rc<BlankAssignmentList>),
-}
-
-impl TrayRemaining {
-    pub fn new(letters: [u8; 256], n_blanks: u8) -> TrayRemaining {
-        let n_total = letters.iter().map(|&i| i as u32).sum::<u32>() + n_blanks as u32;
-        TrayRemaining {
-            letters,
-            n_blanks,
-            n_total,
-        }
-    }
+    Elem((char, usize), Rc<BlankAssignmentList>),
 }
 
 #[derive(Debug, Clone)]
@@ -66,7 +26,7 @@ pub struct WordSearcherState {
     /// Blank spaces that we have assigned
     pub blank_assignments: BlankAssignmentList,
     /// Remaning cards in the rack
-    pub rack: TrayRemaining,
+    pub rack: Rack,
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +34,7 @@ pub struct WordSearcher<'a> {
     /// The line we are searching for words on with constraints
     pub line: &'a [ConstrainedTile],
     /// Letters we have remaining in our rack (separated from whitespace)
-    pub rack: TrayRemaining,
+    pub rack: Rack,
     /// Minimum length for anything to be considered a word
     pub min_length: usize,
 }
@@ -159,7 +119,7 @@ impl<'a> Automaton for WordSearcher<'a> {
                                 position: state.position + 1,
                                 blank_assignments: if let Some(assig) = blank_assignment {
                                     BlankAssignmentList::Elem(
-                                        assig,
+                                        (assig, state.position),
                                         Rc::new(state.blank_assignments.clone()),
                                     )
                                 } else {
@@ -182,18 +142,14 @@ impl<'a> Automaton for WordSearcher<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scrabble::{word_search::WordSearcher, letter_set::LetterSet};
+    use crate::scrabble::letter_set::LetterSet;
+    use crate::scrabble::word_search::WordSearcher;
 
     #[test]
     fn test_simple_search() {
-
         let line = [
             ConstrainedTile::Letters("abdfghklmopqstx".chars().collect()),
-            ConstrainedTile::Letters(
-                "abdefghijklmnopqrstuwxyz"
-                    .chars()
-                    .collect(),
-            ),
+            ConstrainedTile::Letters("abdefghijklmnopqrstuwxyz".chars().collect()),
             ConstrainedTile::Letters("a".chars().collect()),
             ConstrainedTile::Letters(LetterSet::any()),
             ConstrainedTile::Letters(LetterSet::any()),
@@ -202,14 +158,13 @@ mod tests {
 
         let automaton = WordSearcher {
             line: &line[..],
-            rack: TrayRemaining {
+            rack: Rack {
                 letters: [1; 256],
                 n_blanks: 1,
                 n_total: 257,
             },
-            min_length: 0
+            min_length: 0,
         };
-
 
         let mut build = fst::SetBuilder::memory();
         build.insert(b"tepa").unwrap();

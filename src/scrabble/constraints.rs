@@ -1,12 +1,11 @@
 use fst::{Automaton, IntoStreamer, Set, Streamer};
 
-use crate::scrabble::{util::Position, BOARD_SIZE};
+use crate::scrabble::util::Position;
+use crate::scrabble::BOARD_SIZE;
 
-use super::{
-    board::{ScrabbleBoard, Tile},
-    letter_set::LetterSet,
-    util::{Direction, Letter},
-};
+use super::board::{ScrabbleBoard, Tile};
+use super::letter_set::LetterSet;
+use super::util::{Direction, Letter};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ConstrainedTile {
@@ -120,7 +119,13 @@ impl ConstraintBoard {
                 // find minimum length to be attached: first square that is filled or that have constraints (some perpendicular word)
                 let mut end = place.clone();
                 while end.0[self.dir.flip()] < 15 {
-                    if is_empty && end.0 == (Position { row: BOARD_SIZE / 2, col: BOARD_SIZE / 2 }) {
+                    if is_empty
+                        && end.0
+                            == (Position {
+                                row: BOARD_SIZE / 2,
+                                col: BOARD_SIZE / 2,
+                            })
+                    {
                         break;
                     }
                     match line_slice[end.0[self.dir.flip()]] {
@@ -285,7 +290,8 @@ pub fn fill_constraints(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scrabble::{board::ScrabbleBoard, util::Direction};
+    use crate::scrabble::board::ScrabbleBoard;
+    use crate::scrabble::util::Direction;
     use fst::SetBuilder;
     #[test]
     fn test_build_board() {

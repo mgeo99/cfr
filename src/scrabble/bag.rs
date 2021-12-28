@@ -6,7 +6,7 @@ use rand::prelude::SliceRandom;
 pub struct Bag {
     /// Alphabetic characters in the bag
     alph: [char; 27],
-    /// Score associated with each 
+    /// Score associated with each
     amts: [usize; 27],
     values: [i32; 27],
     scores: HashMap<char, i32>,
@@ -54,6 +54,10 @@ impl Bag {
         b
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.distribution.is_empty()
+    }
+
     pub fn score(&self, c: char) -> i32 {
         match self.scores.get(&c) {
             Some(i) => *i,
@@ -73,7 +77,7 @@ impl Bag {
             tiles = self.distribution.iter().take(n).cloned().collect();
         }
         for i in tiles.iter() {
-            if let Some(pos) = self.distribution.iter().position(|&x|  *i == x) {
+            if let Some(pos) = self.distribution.iter().position(|&x| *i == x) {
                 self.distribution.remove(pos);
             }
         }

@@ -1,13 +1,16 @@
 pub mod chance_sampling;
 
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 
 use ndarray::Array1;
 use ndarray_rand::rand_distr::{Distribution, WeightedIndex};
 
-use crate::node::StateNode;
+use self::node::StateNode;
+use self::state::{Game, GameState};
 
-use super::state::*;
+pub mod node;
+pub mod state;
 
 #[derive(Debug, Clone, Copy)]
 pub struct HistoryRecord(usize, usize, f32);
@@ -176,10 +179,7 @@ where
                 } else {
                     -weight * tail_prob * strategy[selected_action]
                 };
-                let curr_regret_sum = strategies
-                    .get(&state_key)
-                    .unwrap()
-                    .get_regret_sum(a);
+                let curr_regret_sum = strategies.get(&state_key).unwrap().get_regret_sum(a);
                 let regret_sum = curr_regret_sum + regret;
                 strategies
                     .get_mut(&state_key)
@@ -255,10 +255,7 @@ where
             // Accumulate and compute counterfactual regret
             for &a in valid_actions.iter() {
                 let regret = utility[a] - state_utility;
-                let curr_regret_sum = strategies
-                    .get(&state_key)
-                    .unwrap()
-                    .get_regret_sum(a);
+                let curr_regret_sum = strategies.get(&state_key).unwrap().get_regret_sum(a);
                 let regret_sum = curr_regret_sum + regret * reach_other;
                 strategies
                     .get_mut(&state_key)

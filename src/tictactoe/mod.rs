@@ -1,4 +1,4 @@
-use crate::state::{Game, GameState};
+use crate::cfr::state::{Game, GameState};
 
 #[derive(Debug)]
 pub struct TicTacToeState {
@@ -214,7 +214,8 @@ impl Game for TicTacToe {
 
 #[cfg(test)]
 mod tests {
-    use crate::state::GameState;
+
+    use crate::cfr::state::GameState;
 
     use super::TicTacToeState;
 

@@ -3,13 +3,12 @@ use std::ops::RangeBounds;
 
 use fst::{IntoStreamer, Set, Streamer};
 
-use super::{
-    bag::Bag,
-    constraints::ConstraintBoard,
-    util::{Direction, Letter, Move, Position, SquareEffect},
-    word_search::{TrayRemaining, WordSearcher},
-    BOARD_SIZE,
-};
+use super::bag::Bag;
+use super::constraints::ConstraintBoard;
+use super::rack::Rack;
+use super::util::{Direction, Letter, Move, Position, SquareEffect};
+use super::word_search::{BlankAssignmentList, WordSearcher};
+use super::BOARD_SIZE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tile {
@@ -23,20 +22,39 @@ pub struct ScrabbleBoard {
     state: Vec<Vec<Tile>>,
     /// Position of all placed blanks
     blanks: Vec<Position>,
-    /// Bag with associated words
-    bag: Bag,
 }
 
 impl ScrabbleBoard {
     pub fn empty() -> Self {
         let state = vec![vec![Tile::Empty; BOARD_SIZE]; BOARD_SIZE];
-        let bag = Bag::default();
         Self {
             state,
-            bag,
             blanks: Vec::new(),
         }
     }
+
+    /// Places the current word on the board. Assumes that the word is a valid placement.
+    /// TODO: Add more validation when implementing live play against a human
+    pub fn place_word(&mut self, word: &str, pos: Position, dir: Direction) {
+        let mut curr_pos = pos;
+
+        for c in word.chars() {
+            let uc = c.to_ascii_uppercase();
+            let tile = Tile::Letter(Letter::Letter(uc));
+            match self[curr_pos] {
+                Tile::Letter(Letter::Letter(l)) => {
+                    assert!(l == uc, "Placement would overwrite the current letter");
+                    self[curr_pos] = tile;
+                }
+                _ => self[curr_pos] = tile,
+            }
+
+            curr_pos = curr_pos
+                .next(dir)
+                .expect("Word placement must be a valid position");
+        }
+    }
+
     /// Calculates the cross score sums for the current board. In the scrabble rules,
     /// if you place something on a square that happens to touch a previously placed word
     /// (regardless of its orientation), you gain the points for that word
@@ -81,13 +99,50 @@ impl ScrabbleBoard {
         cross_sums
     }
 
-    /// Calculates all possible moves
+    /// Checks if a move can be played at all given the current rack and board state
+    pub fn is_move_possible(
+        &self,
+        rack: &Rack,
+        vocab: &Set<impl AsRef<[u8]> + Sync>,
+        bag: &Bag,
+    ) -> bool {
+        let cb_across = ConstraintBoard::build(self, Direction::Across, vocab);
+        let cb_down = ConstraintBoard::build(self, Direction::Down, vocab);
+
+        let across_cands = cb_across.get_candidate_slices();
+        let down_cands = cb_down.get_candidate_slices();
+
+        let all_cands = across_cands.chain(down_cands).collect::<Vec<_>>();
+        if all_cands.len() == 0 {
+            return false;
+        }
+
+        // Check if any candidate can result in a valid move
+        let has_moves = all_cands.into_iter().any(|(pos, line, min_length)| {
+            let searcher = WordSearcher {
+                line,
+                min_length,
+                rack: rack.clone(),
+            };
+            let mut matches = vocab.search_with_state(searcher).into_stream();
+            if let Some(_) = matches.next() {
+                return true;
+            }
+            false
+        });
+
+        true
+    }
+
+    /// Calculates all possible moves. Moves are not returned in any particular order so when presenting
+    /// possible candidates to a player, be sure to sort them
     pub fn calculate_moves(
         &self,
-        rack: &[Letter],
+        rack: &Rack,
         vocab: &Set<impl AsRef<[u8]> + Sync>,
+        bag: &Bag,
     ) -> Vec<Move> {
-        let cross_sums = self.calculate_cross_sums(&self.bag);
+        let cross_sums = self.calculate_cross_sums(bag);
         let cb_across = ConstraintBoard::build(self, Direction::Across, vocab);
         let cb_down = ConstraintBoard::build(self, Direction::Down, vocab);
 
@@ -97,14 +152,6 @@ impl ScrabbleBoard {
         let all_cands = across_cands.chain(down_cands).collect::<Vec<_>>();
         let mut n_blanks = 0;
         let mut rack_hist = [0; 256];
-        for l in rack {
-            if let Letter::Blank = l {
-                n_blanks += 1;
-            } else if let Letter::Letter(l) = l {
-                rack_hist[*l as usize] += 1;
-            }
-        }
-        let rack = TrayRemaining::new(rack_hist, n_blanks);
 
         let mut moves = all_cands
             .into_iter()
@@ -117,31 +164,42 @@ impl ScrabbleBoard {
 
                 let mut matches = vocab.search_with_state(searcher).into_stream();
                 let mut moves = Vec::new();
-                while let Some((word, _)) = matches.next() {
-                    //let state = state.unwrap();
-                    let word = String::from_utf8(word.to_vec()).unwrap();
+                while let Some((word, state)) = matches.next() {
+                    let state = state.unwrap();
+
+                    // Make all usages of blanks lowercase so we can easily figure out after the fact what blanks are used
+                    // and where
+                    let mut blank_pos = Vec::<(char, usize)>::new();
+                    let mut blank_node = state.blank_assignments;
+                    let mut word_chars = word.iter().map(|x| *x as char).collect::<Vec<_>>();
+                    while let BlankAssignmentList::Elem(blank, nxt) = blank_node {
+                        blank_node = (*nxt).clone();
+                        word_chars[blank.1] = word_chars[blank.1].to_ascii_lowercase();
+                        blank_pos.push(blank);
+                    }
+
                     let mut new_move = Move {
                         dir: pos.1,
                         pos: pos.0,
-                        word,
+                        word: word_chars.into_iter().collect(),
                         score: 0,
                     };
                     let cross_sums = match pos.1 {
                         Direction::Across => &cross_sums[0],
-                        _ => &cross_sums[1]
+                        _ => &cross_sums[1],
                     };
-                    new_move.score = self.score(&new_move, cross_sums);
+                    new_move.score = self.score(&new_move, cross_sums, bag);
                     moves.push(new_move);
                 }
                 moves
             })
             .flatten()
             .collect::<Vec<_>>();
-        moves.par_sort_unstable_by_key(|x| std::cmp::Reverse(x.score));
+        //moves.par_sort_unstable_by_key(|x| std::cmp::Reverse(x.score));
         moves
     }
 
-    pub fn score(&self, m: &Move, cross_sums: &[i32; 225]) -> i32 {
+    pub fn score(&self, m: &Move, cross_sums: &[i32; 225], bag: &Bag) -> i32 {
         let mut true_score = 0;
         let mut total_cross_score = 0;
         let mut true_mult = 1;
@@ -161,18 +219,18 @@ impl ScrabbleBoard {
                 Tile::Special(SquareEffect::DoubleWord | SquareEffect::Center) => {
                     true_mult *= 2;
                     cross_mult *= 2;
-                },
+                }
                 Tile::Special(SquareEffect::TripleWord) => {
                     true_mult *= 3;
                     cross_mult *= 3;
-                },
+                }
                 Tile::Special(SquareEffect::TripleLetter) => {
                     tile_mult *= 3;
-                },
+                }
                 Tile::Special(SquareEffect::DoubleLetter) => {
                     tile_mult *= 2;
-                },
-                Tile::Empty => {},
+                }
+                Tile::Empty => {}
                 _ => {
                     cross_mult = 0;
                     n_played += 1;
@@ -181,7 +239,7 @@ impl ScrabbleBoard {
 
             let mut curr_score = 0;
             if !(i.is_lowercase() || self.blanks.contains(&curr_pos)) {
-                curr_score = self.bag.score(i) * tile_mult;
+                curr_score = bag.score(i) * tile_mult;
             }
 
             let cross_sum = cross_sums[curr_pos.as_index()];

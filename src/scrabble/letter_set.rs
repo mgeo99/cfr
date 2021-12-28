@@ -1,5 +1,3 @@
-
-
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct LetterSet {
     // bit is one if letter is in it
@@ -11,17 +9,19 @@ impl LetterSet {
         Self { accepted: [0; 2] }
     }
     pub fn any() -> Self {
-        Self { accepted: [u128::MAX; 2] }
+        Self {
+            accepted: [u128::MAX; 2],
+        }
     }
     pub fn contains(&self, letter: char) -> bool {
         let i = letter as usize;
-        (self.accepted[i / 128]  & (1 << (i%128))) != 0
+        (self.accepted[i / 128] & (1 << (i % 128))) != 0
     }
     pub fn insert(&mut self, letter: char) {
         let i = letter as usize;
-        self.accepted[i / 128]  |= 1 << (i%128)
+        self.accepted[i / 128] |= 1 << (i % 128)
     }
-    pub fn from_many(iter: impl Iterator<Item=char>) -> Self {
+    pub fn from_many(iter: impl Iterator<Item = char>) -> Self {
         let mut tmp = Self::empty();
         iter.for_each(|l| tmp.insert(l));
         tmp
@@ -32,7 +32,6 @@ impl LetterSet {
     pub fn is_any(&self) -> bool {
         self.accepted.iter().all(|&l| l == u128::MAX)
     }
-    
 }
 
 impl Default for LetterSet {

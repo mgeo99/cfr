@@ -24,3 +24,8 @@ Let's define a move as a sequence of (char, (row, col)) tuples:
     - Maximum number of moves is tied to the vocabulary size (in the words.txt we have now this is almost 250k)
 3. Shrink the vocabulary by stemming the words and apply additional post-processing to recover the original word given a valid move
     - At worst case could have as many moves as option 2
+4. Completely ignore the generated word and rely on the move generator to order the words by score. We then simply use the AI
+purely for strategy that involves cutting other players off based on the length of the word it chooses.
+    
+    - Each action then becomes a choice between the row/col/length of the word to place. 
+    - This roughly equates to a maximum of 15x15x5 actions per state since we must form a word of length [2,7] on each turn 
