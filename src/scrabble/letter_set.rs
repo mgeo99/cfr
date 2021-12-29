@@ -2,15 +2,18 @@
 pub struct LetterSet {
     // bit is one if letter is in it
     accepted: [u128; 2],
+    // accepted letter count
+    count: u8
 }
 
 impl LetterSet {
     pub fn empty() -> Self {
-        Self { accepted: [0; 2] }
+        Self { accepted: [0; 2], count: 0 }
     }
     pub fn any() -> Self {
         Self {
             accepted: [u128::MAX; 2],
+            count: 0
         }
     }
     pub fn contains(&self, letter: char) -> bool {
@@ -18,8 +21,12 @@ impl LetterSet {
         (self.accepted[i / 128] & (1 << (i % 128))) != 0
     }
     pub fn insert(&mut self, letter: char) {
+        if self.contains(letter) {
+            return;
+        }
         let i = letter as usize;
-        self.accepted[i / 128] |= 1 << (i % 128)
+        self.accepted[i / 128] |= 1 << (i % 128);
+        self.count += 1;
     }
     pub fn from_many(iter: impl Iterator<Item = char>) -> Self {
         let mut tmp = Self::empty();
@@ -31,6 +38,9 @@ impl LetterSet {
     }
     pub fn is_any(&self) -> bool {
         self.accepted.iter().all(|&l| l == u128::MAX)
+    }
+    pub fn count(&self) -> u8 {
+        self.count
     }
 }
 

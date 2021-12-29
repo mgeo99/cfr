@@ -6,7 +6,7 @@ use ndarray_rand::rand_distr::uniform::SampleUniform;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::cfr::policy::OutcomeSamplingPolicy;
+use crate::cfr::solvers::OutcomeSamplingSolver;
 use crate::utils::{self, serialization};
 
 use super::node::StateNode;
@@ -44,7 +44,7 @@ where
         let mut cumulative_utility = Vec::new();
         cumulative_utility.resize(self.game.num_players(), A::zero());
 
-        let mut policy = OutcomeSamplingPolicy::<G::State, A>::new(
+        let mut policy = OutcomeSamplingSolver::<G::State, A>::new(
             &mut self.strategies,
             self.game.num_actions(),
         );
@@ -71,8 +71,9 @@ where
 
             if (i + 1) % ckpt_steps == 0 {
                 println!("Saving Current Strategy");
-                let path = format!("./strategies/scrabble_{}.ckpt", i + 1);
-                serialization::save_to_disk(policy.strategies(), path.as_str())
+                //let path = format!("./strategies/scrabble_{}.ckpt", i + 1);
+                let path = "./strategies/scrabble.ckpt";
+                serialization::save_to_disk(policy.strategies(), path)
             }
         }
         println!("CFR Training Complete");

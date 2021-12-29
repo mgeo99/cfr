@@ -1,5 +1,9 @@
 use rayon::prelude::*;
+use std::collections::HashSet;
+use std::fs::File;
+use std::io::Read;
 use std::ops::RangeBounds;
+use std::path::Path;
 
 use fst::{IntoStreamer, Set, Streamer};
 
@@ -21,7 +25,7 @@ pub enum Tile {
 pub struct Placement {
     pub word: String,
     pub pos: Position,
-    pub dir: Direction
+    pub dir: Direction,
 }
 
 #[derive(Debug, Clone)]
@@ -29,9 +33,9 @@ pub struct ScrabbleBoard {
     /// Actual letters on the board
     state: Vec<Vec<Tile>>,
     /// Position of all placed blanks
-    blanks: Vec<Position>,
+    blanks: HashSet<Position>,
     /// Moves placed on the board
-    pub placements: Vec<Placement>
+    pub placements: Vec<Placement>,
 }
 
 impl ScrabbleBoard {
@@ -39,9 +43,40 @@ impl ScrabbleBoard {
         let state = vec![vec![Tile::Empty; BOARD_SIZE]; BOARD_SIZE];
         Self {
             state,
-            blanks: Vec::new(),
-            placements: Vec::new()
+            blanks: HashSet::new(),
+            placements: Vec::new(),
         }
+    }
+
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
+        let mut file = File::open(path.as_ref()).unwrap();
+        let mut data = String::new();
+        file.read_to_string(&mut data).unwrap();
+
+        let raw_board: Vec<Vec<String>> = serde_json::from_str(&data).unwrap();
+        let mut state = vec![vec![Tile::Empty; BOARD_SIZE]; BOARD_SIZE];
+
+        for i in 0..BOARD_SIZE {
+            for j in 0..BOARD_SIZE {
+                state[i][j] = match raw_board[i][j].as_str() {
+                    "" => Tile::Empty,
+                    "?" => Tile::Letter(Letter::Blank),
+                    "TL" => Tile::Special(SquareEffect::TripleLetter),
+                    "TW" => Tile::Special(SquareEffect::TripleWord),
+                    "DL" => Tile::Special(SquareEffect::DoubleLetter),
+                    "DW" => Tile::Special(SquareEffect::TripleLetter),
+                    "CN" => Tile::Special(SquareEffect::Center),
+                    c => Tile::Letter(Letter::Letter(c.chars().nth(0).unwrap()))
+                }
+            }
+        }
+
+        Self {
+            state,
+            blanks: HashSet::new(),
+            placements: vec![]
+        }
+
     }
 
     /// Places the current word on the board. Assumes that the word is a valid placement.
@@ -75,7 +110,7 @@ impl ScrabbleBoard {
         self.placements.push(Placement {
             dir,
             pos,
-            word: word.to_string()
+            word: word.to_string(),
         });
         placed_letters
     }
@@ -162,7 +197,7 @@ impl ScrabbleBoard {
 
         all_cands
             .into_par_iter()
-            .map(|(pos, line, min_length)| {
+            .flat_map(|(pos, line, min_length)| {
                 let searcher = WordSearcher {
                     line,
                     min_length,
@@ -200,7 +235,6 @@ impl ScrabbleBoard {
                 }
                 moves
             })
-            .flatten()
             .collect::<Vec<_>>()
     }
 

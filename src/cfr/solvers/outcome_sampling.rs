@@ -16,7 +16,7 @@ const REACH_CLIP: f32 = 1e-12;
 /// Training policy that uses the outcome sampling variant of CFR
 /// Implementation is based off of https://github.com/bakanaouji/cpp-cfr
 /// and https://github.com/deepmind/open_spiel/blob/master/open_spiel/algorithms/outcome_sampling_mccfr.cc
-pub struct OutcomeSamplingPolicy<'a, S: GameState, A> {
+pub struct OutcomeSamplingSolver<'a, S: GameState, A> {
     /// Mutable reference to the strategies in each game state
     strategies: &'a mut HashMap<S::Key, StateNode<A>>,
     /// Number of valid actions in the entire game
@@ -24,7 +24,7 @@ pub struct OutcomeSamplingPolicy<'a, S: GameState, A> {
     _a: PhantomData<A>,
 }
 
-impl<'a, S: GameState, A> OutcomeSamplingPolicy<'a, S, A>
+impl<'a, S: GameState, A> OutcomeSamplingSolver<'a, S, A>
 where
     A: NdFloat + Zero + SampleUniform + Default + PartialOrd + for<'b> std::ops::AddAssign<&'b A>,
 {

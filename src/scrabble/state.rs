@@ -99,21 +99,21 @@ impl MoveGrid {
 
 pub struct ScrabbleState {
     /// Current tile bag
-    bag: Bag,
+    pub bag: Bag,
     /// Board state
-    board: ScrabbleBoard,
+    pub board: ScrabbleBoard,
     /// Current racks for each player
-    player_racks: Vec<Rack>,
+    pub player_racks: Vec<Rack>,
     /// Current scores for each player
-    player_scores: Vec<i32>,
+    pub player_scores: Vec<i32>,
     /// Flag to show whether or not each player is active
-    player_active: Vec<bool>,
+    pub player_active: Vec<bool>,
     /// Currently active player
-    curr_player: usize,
+    pub curr_player: usize,
     /// Current player active move grid,
-    curr_move_grid: MoveGrid,
+    pub curr_move_grid: MoveGrid,
     /// Pointer to the vocabulary to avoid excessive and expensive copies
-    vocab: Rc<Set<Vec<u8>>>,
+    pub vocab: Rc<Set<Vec<u8>>>,
 }
 
 impl GameState for ScrabbleState {
@@ -255,6 +255,8 @@ pub struct ScrabbleGame {
     n_actions: usize,
     /// Vocabulary tied to the game
     vocab: Rc<Set<Vec<u8>>>,
+    /// Initial board (to stop multiple IO calls)
+    board: ScrabbleBoard
 }
 
 impl ScrabbleGame {
@@ -263,6 +265,7 @@ impl ScrabbleGame {
             n_actions: BOARD_SIZE * BOARD_SIZE * MAX_LENGTH + 1,
             n_players,
             vocab,
+            board: ScrabbleBoard::from_file("empty_board.json")
         }
     }
 }
@@ -291,7 +294,7 @@ impl Game for ScrabbleGame {
             racks.push(rack);
         }
         // Compute the initial move grid for the first player
-        let board = ScrabbleBoard::empty();
+        let board = self.board.clone();
         let move_grid = MoveGrid::build(&bag, &board, self.vocab.as_ref(), &racks[0]);
 
         ScrabbleState {

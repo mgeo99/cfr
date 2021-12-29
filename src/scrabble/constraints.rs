@@ -1,4 +1,5 @@
 use fst::{Automaton, IntoStreamer, Set, Streamer};
+use rayon::prelude::*;
 
 use crate::scrabble::util::Position;
 use crate::scrabble::BOARD_SIZE;
@@ -47,7 +48,7 @@ impl ConstraintBoard {
     pub fn build(
         curr_board: &ScrabbleBoard,
         dir: Direction,
-        vocab: &Set<impl AsRef<[u8]>>,
+        vocab: &Set<impl AsRef<[u8]> + Sync>,
     ) -> Self {
         let mut pos = Position { row: 0, col: 0 };
         let mut state =
@@ -55,7 +56,7 @@ impl ConstraintBoard {
         for i in 0..BOARD_SIZE {
             let mut tile_buffer = [Tile::Empty; BOARD_SIZE];
             let mut curr_pos = pos.clone();
-            
+
             for j in 0..BOARD_SIZE {
                 tile_buffer[j] = curr_board[curr_pos].clone();
                 curr_pos[dir] += 1;
@@ -235,56 +236,72 @@ impl<'a> Automaton for ConstraintBuilder<'a> {
 pub fn fill_constraints(
     line: &[Tile],
     constraints: &mut [ConstrainedTile],
-    vocab: &Set<impl AsRef<[u8]>>,
+    vocab: &Set<impl AsRef<[u8]> + Sync>,
 ) {
-    let mut prefix = vec![];
-    let mut suffix = vec![];
-    for (i, constraint) in constraints.iter_mut().enumerate() {
-        *constraint = match line[i] {
-            Tile::Letter(l) => ConstrainedTile::Filled(l),
-            _ => {
-                // Otherwise scan for letters using prefix/suffix
-                // Find a prefix
-                prefix.clear();
-                for j in (0..i).rev() {
-                    match line[j] {
-                        Tile::Letter(l) => prefix.insert(0, l),
-                        _ => break,
-                    };
-                }
-                // Find the suffix
-                suffix.clear();
-                for j in (i + 1)..(line.len()) {
-                    match line[j] {
-                        Tile::Letter(l) => suffix.push(l),
-                        _ => break,
-                    };
-                }
-                let letters = if prefix.is_empty() && suffix.is_empty() {
-                    LetterSet::any()
-                } else {
-                    let automaton = ConstraintBuilder {
-                        prefix: &prefix,
-                        suffix: &suffix,
-                    };
-                    // Use the vocabulary to scan for valid letters
-                    let mut matches = vocab.search_with_state(automaton).into_stream();
-                    let mut letter_set = LetterSet::empty();
-                    while let Some((_, state)) = matches.next() {
-                        if let Some(ConstraintBuilderState::Done(l)) = state {
-                            letter_set.insert(l);
-                        } else {
-                            unreachable!("not in final state");
-                        }
+    constraints
+        .iter_mut()
+        .enumerate()
+        .for_each(|(i, constraint)| {
+            *constraint = match line[i] {
+                Tile::Letter(l) => ConstrainedTile::Filled(l),
+                _ => {
+                    /* 
+                        Even though the search routine upstream relies on these constraints,
+                        do we actually need this to still have valid moves???
+
+                        Tiles that are filled will still have the constraint in place that they must match
+                        that letter EXACTLY. Other tiles (like what is being accounted for here) can essentially
+                        be set to just anything because it is possible we will run into another tile with a letter
+                        already there that MUST match. Since words are all or nothing in this context we can't just place
+                        a random letter down. So implicitly we will find the right word even without a constraint
+                        based on our vocabulary
+                    */
+
+                    /*
+                    let mut prefix = Vec::with_capacity(BOARD_SIZE);
+                    let mut suffix = Vec::with_capacity(BOARD_SIZE);
+                    // Otherwise scan for letters using prefix/suffix
+                    // Find a prefix
+                    for j in (0..i).rev() {
+                        match line[j] {
+                            Tile::Letter(l) => prefix.insert(0, l),
+                            _ => break,
+                        };
                     }
+                    // Find the suffix
+                    for j in (i + 1)..(line.len()) {
+                        match line[j] {
+                            Tile::Letter(l) => suffix.push(l),
+                            _ => break,
+                        };
+                    }
+                    
+                    let letters = if prefix.is_empty() && suffix.is_empty() {
+                        LetterSet::any()
+                    } else {
+                        let automaton = ConstraintBuilder {
+                            prefix: &prefix,
+                            suffix: &suffix,
+                        };
+                        // Use the vocabulary to scan for valid letters.
+                        // Note: This is done for the algorithm that actually scans for valid words to be placed
+                        // on the board. Unfortunately that means we are severely hampering our performance here because
+                        // even though the FST crate is amazing, we could be doing far too many comparisons than are necessary
+                        let mut matches = vocab.search_with_state(automaton).into_stream();
+                        let mut letter_set = LetterSet::empty();
+                        while let Some((_, state)) = matches.next() {
+                            if let Some(ConstraintBuilderState::Done(l)) = state {
+                                letter_set.insert(l);
+                            }
+                        }
 
-                    letter_set
-                };
-
-                ConstrainedTile::Letters(letters)
+                        letter_set
+                    };*/
+                
+                    ConstrainedTile::Letters(LetterSet::any())
+                }
             }
-        }
-    }
+        })
 }
 
 // Test Cases? LOL u thought. I'll do these later
