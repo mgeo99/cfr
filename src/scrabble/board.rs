@@ -33,7 +33,7 @@ pub struct ScrabbleBoard {
     /// Actual letters on the board
     state: Vec<Vec<Tile>>,
     /// Position of all placed blanks
-    blanks: HashSet<Position>,
+    pub blanks: HashSet<Position>,
     /// Moves placed on the board
     pub placements: Vec<Placement>,
 }

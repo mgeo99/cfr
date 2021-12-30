@@ -6,7 +6,9 @@ use std::rc::Rc;
 use cfr::node::StateNode;
 use fst::SetBuilder;
 use ndarray_rand::rand_distr::{Distribution, WeightedIndex};
+use relm::Widget;
 use scrabble::util::{Direction, Position};
+use scrabble::ScrabbleUI;
 use utils::serialization;
 #[macro_use]
 extern crate text_io;
@@ -158,8 +160,15 @@ fn play_scrabble() {
 
 fn main() {
     //play_tictactoe();
-    train_scrabble();
+    //train_scrabble();
     //play_scrabble();
+    let words = read_vocabulary();
+    let mut build = SetBuilder::memory();
+    build.extend_iter(words).unwrap();
+    let vocab = build.into_set();
+    let vocab = Rc::new(vocab);
+    let game = ScrabbleGame::new(2, vocab);
+    ScrabbleUI::run(game).expect("Something went wrong");
 }
 
 // 15x15x26
