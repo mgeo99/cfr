@@ -1,22 +1,64 @@
 use gdk::RGBA;
-use glib::Cast;
+use glib::{Cast, Type};
 //use gdk::pango::{AttrList, Attribute};
-use gtk::prelude::{ContainerExt, GridExt, GtkWindowExt, LabelExt, WidgetExt};
-use gtk::{Align, EventBox, GestureExt, Grid, Inhibit, Label, StateFlags, WindowType};
+use gtk::prelude::{
+    ContainerExt,
+    GridExt,
+    GtkListStoreExtManual,
+    GtkWindowExt,
+    LabelExt,
+    WidgetExt,
+};
+use gtk::{
+    Align,
+    Button,
+    ButtonExt,
+    EventBox,
+    GestureExt,
+    Grid,
+    GtkListStoreExt,
+    Inhibit,
+    Label,
+    ListStore,
+    Stack,
+    StateFlags,
+    StyleContextExt,
+    TreeModelExt,
+    TreeView,
+    TreeViewColumn,
+    TreeViewExt,
+    WindowType,
+};
 use relm::{connect, timeout, Relm, Update, Widget};
 use relm_derive::Msg;
 
-use crate::cfr::state::Game;
+use crate::cfr::state::{Game, GameState};
 use crate::scrabble::agent::ScrabbleAgent;
 use crate::scrabble::board::Tile;
 use crate::scrabble::state::{ScrabbleGame, ScrabbleState};
-use crate::scrabble::util::{Letter, Position, SquareEffect};
+use crate::scrabble::ui::util;
+use crate::scrabble::util::{Letter, Move, Position, SquareEffect};
+
+const GREY: RGBA = RGBA {
+    red: 0.38,
+    green: 0.38,
+    blue: 0.38,
+    alpha: 1.0,
+};
 
 pub struct ScrabbleUI {
     /// Current state of the game
     state: ScrabbleState,
-    /// UI Board used to update after a state change
+
+    // UI Components
     board: Grid,
+    rack: Grid,
+
+    move_options: TreeView,
+    move_store: ListStore,
+    move_data: Vec<Move>,
+    selected_move: Option<usize>,
+
     /// Agent the user will play against
     agent: ScrabbleAgent,
 
@@ -31,22 +73,32 @@ pub enum ScrabbleMsg {
     Tick,
     Quit,
     SelectTile((f64, f64)),
+    SelectMove(u32),
+    GenerateMoves,
 }
 
 impl ScrabbleUI {
     pub fn new(
         initial_state: ScrabbleState,
         board: Grid,
+        rack: Grid,
         parent: gtk::Window,
         relm: Relm<ScrabbleUI>,
+        move_options: TreeView,
+        move_store: ListStore,
     ) -> Self {
         Self {
-            agent: ScrabbleAgent::new(Default::default()),
+            agent: ScrabbleAgent::from_file("./strategies/scrabble.ckpt"),
             board,
             relm_window: parent,
             state: initial_state,
             selected_cell: None,
             relm,
+            rack,
+            move_options,
+            move_store,
+            move_data: Vec::new(),
+            selected_move: None,
         }
     }
 
@@ -54,13 +106,13 @@ impl ScrabbleUI {
         format!("<span face=\"sans\" color=\"{}\">{}</span><span color=\"{0}\" face=\"sans\"><sub>{}</sub></span>", color, txt, score)
     }
 
-    fn update_board_label(label: &Label, tile: &Tile) {
+    fn update_board_label(label: &Label, tile: &Tile, score: i32) {
         // Update the label text
         let lbl_text = match tile {
             Tile::Letter(Letter::Letter(l)) => l.to_string(),
             _ => " ".to_string(),
         };
-        let lbl_text = Self::get_board_label(&lbl_text, "black", 12);
+        let lbl_text = Self::get_board_label(&lbl_text, "black", score);
         label.set_markup(&lbl_text);
         let tile_color = Self::compute_tile_color(tile);
         label.override_background_color(StateFlags::empty(), Some(&tile_color));
@@ -75,10 +127,10 @@ impl ScrabbleUI {
                 blue: 1.0,
             },
             Tile::Letter(_) => RGBA {
-                alpha: 1.0,
-                red: 1.0,
-                green: 1.0,
-                blue: 1.0,
+                alpha: 0.6,
+                red: 0.5,
+                green: 0.5,
+                blue: 0.5,
             },
             Tile::Special(SquareEffect::Center) => RGBA {
                 alpha: 0.8,
@@ -119,6 +171,50 @@ impl ScrabbleUI {
             .unwrap()
             .dynamic_cast::<Label>()
             .unwrap()
+    }
+
+    fn get_rack_label(&self, i: i32) -> Label {
+        self.rack
+            .get_child_at(i, 0)
+            .unwrap()
+            .dynamic_cast::<Label>()
+            .unwrap()
+    }
+
+    fn render_player_rack(&self) {
+        // Clear the current rack
+        for i in 0..7 {
+            let l = self.get_rack_label(i);
+            l.set_text(" ");
+        }
+
+        // Get the new rack
+        for (i, letter) in self.state.player_racks[0]
+            .get_letters()
+            .into_iter()
+            .enumerate()
+        {
+            let label = self.get_rack_label(i as i32);
+            match letter {
+                Letter::Blank => label.set_text("?"),
+                Letter::Letter(l) => label.set_text(&l.to_string()),
+            }
+        }
+    }
+
+    fn render_scrabble_board(&self) {
+        for i in 0..15 {
+            for j in 0..15 {
+                let pos = Position { row: i, col: j };
+                let label = self.get_label(i as i32, j as i32);
+                let score = if let Tile::Letter(l) = self.state.board[pos] {
+                    self.state.bag.score(l)
+                } else {
+                    0
+                };
+                Self::update_board_label(&label, &self.state.board[pos], score);
+            }
+        }
     }
 
     fn handle_tile_selected(&mut self, row: i32, col: i32) {
@@ -163,6 +259,44 @@ impl ScrabbleUI {
             self.selected_cell = Some((row, col));
         }
     }
+
+    fn handle_generate_moves(&mut self) {
+        self.move_store.clear();
+        self.move_data.clear();
+        let mut available_moves = self.state.curr_move_grid.moves().to_vec();
+        available_moves.sort_unstable_by_key(|x| std::cmp::Reverse(x.score));
+
+        for (pos, m) in available_moves.into_iter().enumerate() {
+            let pos_str = format!("({}, {})", m.pos.row, m.pos.col);
+            let dir_str = match m.dir {
+                crate::scrabble::util::Direction::Across => "across",
+                _ => "down",
+            };
+            self.move_store.insert_with_values(
+                Some(pos as u32),
+                &[0, 1, 2, 3, 4],
+                &[&(pos as u32), &pos_str, &dir_str, &m.word, &m.score],
+            );
+            self.move_data.push(m);
+        }
+    }
+
+    fn handle_move_selected(&mut self, move_id: u32) {
+        // Run the player's move
+        let target_move = &self.move_data[move_id as usize];
+
+        let next_state = self.state.next_state_with_move(Some(target_move));
+
+        // Now run the AI's move
+        println!("Getting agent move");
+        let ai_move = self.agent.get_action(&next_state);
+        let next_state = next_state.next_state(ai_move).unwrap();
+        self.state = next_state;
+
+        self.render_scrabble_board();
+
+        println!("Scores: {:?}", self.state.player_scores);
+    }
 }
 
 impl Update for ScrabbleUI {
@@ -172,13 +306,15 @@ impl Update for ScrabbleUI {
 
     type Msg = ScrabbleMsg;
 
-    fn model(relm: &relm::Relm<Self>, param: Self::ModelParam) -> Self::Model {
-        param.start()
+    fn model(_: &relm::Relm<Self>, game: Self::ModelParam) -> Self::Model {
+        game.start()
     }
 
     fn update(&mut self, event: Self::Msg) {
         match event {
             ScrabbleMsg::Tick => {
+                self.render_player_rack();
+
                 self.relm_window.show_all();
                 timeout(self.relm.stream(), 1, || ScrabbleMsg::Tick)
             }
@@ -192,6 +328,11 @@ impl Update for ScrabbleUI {
                 self.handle_tile_selected(row, col);
 
                 self.update(ScrabbleMsg::Tick);
+            }
+            ScrabbleMsg::SelectMove(move_id) => self.handle_move_selected(move_id),
+            ScrabbleMsg::GenerateMoves => {
+                self.handle_generate_moves();
+                timeout(self.relm.stream(), 1, || ScrabbleMsg::Tick)
             }
         }
     }
@@ -223,6 +364,14 @@ impl Widget for ScrabbleUI {
         board.set_row_spacing(2);
         board.set_column_spacing(2);
         board.set_border_width(1);
+        for i in 0..15 {
+            for j in 0..15 {
+                let pos = Position { row: i, col: j };
+                let label = Label::new(Some(" "));
+                Self::update_board_label(&label, &initial_state.board[pos], 0);
+                board.attach(&label, j as i32, i as i32, 1, 1);
+            }
+        }
 
         let evt_box = EventBox::new();
         evt_box.add(&board);
@@ -236,15 +385,72 @@ impl Widget for ScrabbleUI {
             )
         );
 
-        for i in 0..15 {
-            for j in 0..15 {
-                let pos = Position { row: i, col: j };
-                let label = Label::new(Some(" "));
-                Self::update_board_label(&label, &initial_state.board[pos]);
-                board.attach(&label, j as i32, i as i32, 1, 1);
-            }
+        // Create the rack to show for the player
+        let rack = Grid::new();
+        rack.set_hexpand(true); // todo make fn to generate grid
+        rack.set_vexpand(true);
+        rack.set_row_homogeneous(true);
+        rack.set_column_homogeneous(true);
+        rack.set_halign(Align::Fill);
+        rack.set_border_width(5);
+        for i in 0..7 {
+            let l = Label::new(Some(" "));
+            l.override_background_color(StateFlags::empty(), Some(&RGBA::white()));
+            rack.attach(&l, i, 0, 1, 1);
         }
 
+        // Create the space for a moves list
+        let tree_model = ListStore::new(&[
+            Type::U32,    // Index
+            Type::String, // Pos
+            Type::String, // Dir
+            Type::String, // Move
+            Type::U8,     // Score
+        ]);
+
+        let options = TreeView::with_model(&tree_model);
+        options.get_style_context().add_class("monospace");
+        connect!(relm, options, connect_row_activated(tree, path, _col), {
+            let model = tree.get_model().unwrap();
+            let iter = model.get_iter(path).unwrap();
+            let move_id = model.get_value(&iter, 0).get::<u32>().unwrap();
+            ScrabbleMsg::SelectMove(move_id.unwrap())
+        });
+
+        let options_container = util::create_scroll_window(&options);
+
+        let mut columns: Vec<TreeViewColumn> = Vec::new();
+        util::append_column("#", &mut columns, &options, None);
+        util::append_column("Position", &mut columns, &options, None);
+        util::append_column("Direction", &mut columns, &options, None);
+        util::append_column("Word", &mut columns, &options, None);
+        util::append_column("Score", &mut columns, &options, None);
+
+        /*connect!(
+            relm,
+            options,
+            connect_cursor_changed(_),
+            ScrabbleMsg::SelectMove
+        );*/
+
+        // Set up button box
+        let button_box = Grid::new();
+        button_box.set_hexpand(true); // todo make fn to generate grid
+        button_box.set_vexpand(true);
+        button_box.set_row_homogeneous(true);
+        button_box.set_column_homogeneous(true);
+
+        let choices_btn = Button::new();
+        choices_btn.add(&Label::new(Some("Generate Choices")));
+        connect!(
+            relm,
+            choices_btn,
+            connect_clicked(_),
+            ScrabbleMsg::GenerateMoves
+        );
+        button_box.attach(&choices_btn, 0, 0, 1, 1);
+
+        // Final layout grid
         let grid = Grid::new();
         grid.set_hexpand(true);
         grid.set_vexpand(true);
@@ -253,14 +459,23 @@ impl Widget for ScrabbleUI {
         grid.set_halign(Align::Fill);
         grid.set_valign(Align::Fill);
 
-        // attach: left, top, width, height
-        grid.attach(&evt_box, 0, 0, 23, 1);
-        //grid.attach(&event_box, 0, 1, 13, 15);
+        grid.attach(&evt_box, 0, 0, 23, 16);
+        grid.attach(&rack, 25, 0, 7, 1);
+        grid.attach(&options_container, 25, 2, 15, 14);
+        grid.attach(&button_box, 25, 1, 15, 1);
 
         window.add(&grid);
-        window.set_default_size(800, 600);
+        window.set_default_size(1280, 600);
         window.show_all();
-        let game = Self::new(initial_state, board, window, relm.clone());
+        let game = Self::new(
+            initial_state,
+            board,
+            rack,
+            window,
+            relm.clone(),
+            options,
+            tree_model,
+        );
         game
     }
 }

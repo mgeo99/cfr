@@ -238,6 +238,8 @@ pub fn fill_constraints(
     constraints: &mut [ConstrainedTile],
     vocab: &Set<impl AsRef<[u8]> + Sync>,
 ) {
+    let mut prefix = Vec::with_capacity(BOARD_SIZE);
+    let mut suffix = Vec::with_capacity(BOARD_SIZE);
     constraints
         .iter_mut()
         .enumerate()
@@ -245,7 +247,7 @@ pub fn fill_constraints(
             *constraint = match line[i] {
                 Tile::Letter(l) => ConstrainedTile::Filled(l),
                 _ => {
-                    /* 
+                    /*
                         Even though the search routine upstream relies on these constraints,
                         do we actually need this to still have valid moves???
 
@@ -257,11 +259,9 @@ pub fn fill_constraints(
                         based on our vocabulary
                     */
 
-                    /*
-                    let mut prefix = Vec::with_capacity(BOARD_SIZE);
-                    let mut suffix = Vec::with_capacity(BOARD_SIZE);
                     // Otherwise scan for letters using prefix/suffix
                     // Find a prefix
+                    prefix.clear();
                     for j in (0..i).rev() {
                         match line[j] {
                             Tile::Letter(l) => prefix.insert(0, l),
@@ -269,13 +269,14 @@ pub fn fill_constraints(
                         };
                     }
                     // Find the suffix
+                    suffix.clear();
                     for j in (i + 1)..(line.len()) {
                         match line[j] {
                             Tile::Letter(l) => suffix.push(l),
                             _ => break,
                         };
                     }
-                    
+
                     let letters = if prefix.is_empty() && suffix.is_empty() {
                         LetterSet::any()
                     } else {
@@ -283,10 +284,7 @@ pub fn fill_constraints(
                             prefix: &prefix,
                             suffix: &suffix,
                         };
-                        // Use the vocabulary to scan for valid letters.
-                        // Note: This is done for the algorithm that actually scans for valid words to be placed
-                        // on the board. Unfortunately that means we are severely hampering our performance here because
-                        // even though the FST crate is amazing, we could be doing far too many comparisons than are necessary
+                        // Use the vocabulary to scan for valid letters
                         let mut matches = vocab.search_with_state(automaton).into_stream();
                         let mut letter_set = LetterSet::empty();
                         while let Some((_, state)) = matches.next() {
@@ -296,9 +294,9 @@ pub fn fill_constraints(
                         }
 
                         letter_set
-                    };*/
-                
-                    ConstrainedTile::Letters(LetterSet::any())
+                    };
+
+                    ConstrainedTile::Letters(letters)
                 }
             }
         })

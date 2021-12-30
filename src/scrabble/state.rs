@@ -72,10 +72,17 @@ impl MoveGrid {
         let coord = util::index_to_coord(idx, &[BOARD_SIZE, BOARD_SIZE, MAX_LENGTH]);
 
         let valid_moves = &self.move_ids[coord[0]][coord[1]][coord[2]];
+        if valid_moves.len() == 1 {
+            return &self.moves[valid_moves[0]];
+        }
         // Pick a random move
         let mut rng = rand::thread_rng();
         let selected_move = valid_moves.choose(&mut rng).unwrap();
         &self.moves[*selected_move]
+    }
+
+    pub fn moves(&self) -> &[Move] {
+        &self.moves
     }
 
     // TODO: Add an offset by 1 that basically means always take the highest scoring move
@@ -116,59 +123,14 @@ pub struct ScrabbleState {
     pub vocab: Rc<Set<Vec<u8>>>,
 }
 
-impl GameState for ScrabbleState {
-    type Key = String;
-
-    fn active_player(&self) -> usize {
-        self.curr_player
-    }
-
-    fn valid_actions(&self) -> Vec<usize> {
-        let mut valid = self.curr_move_grid.get_valid_moves();
-        valid.push(0);
-        valid
-    }
-
-    fn state_key(&self) -> Self::Key {
-        let mut key = String::new();
-        key.push_str(format!("{}", self.curr_player).as_str());
-       /*let mut placed_words = self.board.placements.iter().map(|x| x.word.as_str()).collect::<Vec<_>>();
-        placed_words.sort_unstable();
-        for p in placed_words {
-            key.push_str(p);
-        }*/
-        for row in 0..BOARD_SIZE {
-            for col in 0..BOARD_SIZE {
-                let pos = Position { row, col };
-                match self.board[pos] {
-                    Tile::Empty => key.push(' '),
-                    Tile::Letter(letter) => match letter {
-                        Letter::Letter(l) => key.push(l),
-                        Letter::Blank => key.push('-'),
-                    },
-                    Tile::Special(effect) => match effect {
-                        SquareEffect::Center => key.push('C'),
-                        SquareEffect::DoubleLetter => key.push_str("DL"),
-                        SquareEffect::DoubleWord => key.push_str("DW"),
-                        SquareEffect::TripleLetter => key.push_str("TL"),
-                        SquareEffect::TripleWord => key.push_str("TW"),
-                    },
-                }
-            }
-        }
-        key
-    }
-
-    fn next_state(&self, action: usize) -> Option<Self> {
+impl ScrabbleState {
+    pub fn next_state_with_move(&self, selected_move: Option<&Move>) -> ScrabbleState {
         let mut next_bag = self.bag.clone();
         let mut next_board = self.board.clone();
         let mut next_racks = self.player_racks.clone();
         let mut next_scores = self.player_scores.clone();
         let mut next_player_active = self.player_active.clone();
-
-        // We can only do this if we have available moves
-        if self.curr_move_grid.moves.len() > 0 {
-            let selected_move = self.curr_move_grid.get_move(action);
+        if let Some(selected_move) = selected_move {
             // Place the word
             let used_letters =
                 next_board.place_word(&selected_move.word, selected_move.pos, selected_move.dir);
@@ -211,7 +173,7 @@ impl GameState for ScrabbleState {
 
         next_player_active[next_player] = next_movegrid.moves.len() > 0;
 
-        Some(ScrabbleState {
+        ScrabbleState {
             bag: next_bag,
             board: next_board,
             curr_move_grid: next_movegrid,
@@ -220,7 +182,62 @@ impl GameState for ScrabbleState {
             player_scores: next_scores,
             player_active: next_player_active,
             vocab: self.vocab.clone(),
-        })
+        }
+    }
+}
+
+impl GameState for ScrabbleState {
+    type Key = String;
+
+    fn active_player(&self) -> usize {
+        self.curr_player
+    }
+
+    fn valid_actions(&self) -> Vec<usize> {
+        let mut valid = self.curr_move_grid.get_valid_moves();
+        valid.push(0);
+        valid
+    }
+
+    fn state_key(&self) -> Self::Key {
+        let mut key = String::new();
+        key.push_str(format!("{}", self.curr_player).as_str());
+        /*let mut placed_words = self.board.placements.iter().map(|x| x.word.as_str()).collect::<Vec<_>>();
+        placed_words.sort_unstable();
+        for p in placed_words {
+            key.push_str(p);
+        }*/
+        for row in 0..BOARD_SIZE {
+            for col in 0..BOARD_SIZE {
+                let pos = Position { row, col };
+                match self.board[pos] {
+                    Tile::Empty => key.push(' '),
+                    Tile::Letter(letter) => match letter {
+                        Letter::Letter(l) => key.push(l),
+                        Letter::Blank => key.push('-'),
+                    },
+                    Tile::Special(effect) => match effect {
+                        SquareEffect::Center => key.push('C'),
+                        SquareEffect::DoubleLetter => key.push_str("DL"),
+                        SquareEffect::DoubleWord => key.push_str("DW"),
+                        SquareEffect::TripleLetter => key.push_str("TL"),
+                        SquareEffect::TripleWord => key.push_str("TW"),
+                    },
+                }
+            }
+        }
+        key
+    }
+
+    fn next_state(&self, action: usize) -> Option<Self> {
+        // We can only do this if we have available moves
+        let selected_move = if self.curr_move_grid.moves.len() > 0 {
+            Some(self.curr_move_grid.get_move(action))
+        } else {
+            None
+        };
+        let next_state = self.next_state_with_move(selected_move);
+        Some(next_state)
     }
 
     fn is_terminal(&self) -> bool {
@@ -256,7 +273,7 @@ pub struct ScrabbleGame {
     /// Vocabulary tied to the game
     vocab: Rc<Set<Vec<u8>>>,
     /// Initial board (to stop multiple IO calls)
-    board: ScrabbleBoard
+    board: ScrabbleBoard,
 }
 
 impl ScrabbleGame {
@@ -265,7 +282,7 @@ impl ScrabbleGame {
             n_actions: BOARD_SIZE * BOARD_SIZE * MAX_LENGTH + 1,
             n_players,
             vocab,
-            board: ScrabbleBoard::from_file("empty_board.json")
+            board: ScrabbleBoard::from_file("empty_board.json"),
         }
     }
 }

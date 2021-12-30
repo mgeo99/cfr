@@ -19,7 +19,9 @@ impl ScrabbleAgent {
     }
 
     pub fn from_file<P: AsRef<Path>>(path: P) -> Self {
+        println!("Loading Agent Strategy");
         let strategies = serialization::load_from_disk(path);
+        println!("Strategy Loaded");
         Self::new(strategies)
     }
 
@@ -33,11 +35,16 @@ impl ScrabbleAgent {
                     avg_strat[i] = 0.0;
                 }
             }
-            let dist = WeightedIndex::new(avg_strat).unwrap();
+            let dist = WeightedIndex::new(avg_strat.view()).unwrap();
             let mut rng = rand::thread_rng();
             let selected_action = dist.sample(&mut rng);
+            println!(
+                "Selected Action: {} with probability {}",
+                selected_action, avg_strat[selected_action]
+            );
             return selected_action;
         }
+        println!("Agent has not seen this state before. Deferring to highest scoring move");
         // Return the default action if we dont have any stored strategy node
         0
     }

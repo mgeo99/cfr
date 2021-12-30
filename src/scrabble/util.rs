@@ -100,6 +100,7 @@ impl Position {
         self.row * BOARD_SIZE + self.col
     }
 
+
     /// Moves the position forward a fixed number of steps
     pub fn step_n(&self, n: usize, dir: Direction) -> Option<Position> {
         let mut p = *self;
@@ -190,7 +191,7 @@ impl std::ops::IndexMut<Direction> for Position {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Move {
     pub word: String,
     pub pos: Position,

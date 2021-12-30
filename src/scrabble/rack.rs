@@ -21,14 +21,14 @@ impl Rack {
     }
 
     pub fn empty() -> Self {
-        Self::new([0;256], 0)
+        Self::new([0; 256], 0)
     }
 
     /// Adds an additional letter in-place. Should only be used when handling state transitions
     pub fn add_inplace(&mut self, letter: Letter) {
         match letter {
             Letter::Blank => self.n_blanks += 1,
-            Letter::Letter(l) => self.letters[l as usize] += 1
+            Letter::Letter(l) => self.letters[l as usize] += 1,
         };
         self.n_total += 1;
     }
@@ -38,7 +38,7 @@ impl Rack {
     pub fn remove_inplace(&mut self, letter: Letter) {
         match letter {
             Letter::Blank => self.n_blanks -= 1,
-            Letter::Letter(l) => self.letters[l as usize] -= 1
+            Letter::Letter(l) => self.letters[l as usize] -= 1,
         };
         self.n_total -= 1;
     }
@@ -65,6 +65,19 @@ impl Rack {
         } else {
             None
         }
+    }
+
+    pub fn get_letters(&self) -> Vec<Letter> {
+        let mut letters = Vec::new();
+        for _ in 0..self.n_blanks {
+            letters.push(Letter::Blank);
+        }
+        for i in 0..256 {
+            for _ in 0..self.letters[i] {
+                letters.push(Letter::Letter(char::from_u32(i as u32).unwrap()));
+            }
+        }
+        letters
     }
 }
 

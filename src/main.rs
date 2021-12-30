@@ -74,7 +74,7 @@ fn play_tictactoe() {
 }
 
 fn read_vocabulary() -> Vec<String> {
-    let file = File::open("words_small.txt").unwrap();
+    let file = File::open("words.txt").unwrap();
     let reader = BufReader::new(file);
     let mut words = Vec::new();
     for line in reader.lines() {
@@ -104,64 +104,6 @@ fn train_scrabble() {
 }
 
 fn play_scrabble() {
-    let file = File::open("words_small.txt").unwrap();
-    let reader = BufReader::new(file);
-    let mut words = Vec::new();
-    for line in reader.lines() {
-        let word = line.unwrap().to_uppercase();
-        if word.chars().count() < 2 {
-            continue;
-        }
-        words.push(word);
-    }
-
-    words.sort_unstable();
-
-    let mut build = SetBuilder::memory();
-    build.extend_iter(words).unwrap();
-    let vocab = build.into_set();
-    let vocab = Rc::new(vocab);
-    let strategy: HashMap<String, StateNode<f32>> =
-        serialization::load_from_disk("./strategies/scrabble_5000.ckpt");
-
-    loop {
-        let bag = Bag::default();
-        let board = ScrabbleBoard::from_file("board.json");
-        println!("Enter Tray:");
-        let tray: String = read!("{}\n");
-        let rack = Rack::from_iter(tray.chars());
-        let move_grid = MoveGrid::build(&bag, &board, vocab.as_ref(), &rack);
-        let state = ScrabbleState {
-            bag,
-            board,
-            curr_move_grid: move_grid,
-            curr_player: 0,
-            player_active: vec![],
-            player_racks: vec![],
-            player_scores: vec![],
-            vocab: vocab.clone(),
-        };
-        let valid_moves = state.valid_actions();
-        if let Some(node) = strategy.get(&state.state_key()) {
-            let mut avg_strat = node.get_average_strategy();
-            for i in 0..avg_strat.len() {
-                if !valid_moves.contains(&i) {
-                    avg_strat[i] = 0.0;
-                }
-            }
-            let dist = WeightedIndex::new(avg_strat).unwrap();
-            let mut rng = rand::thread_rng();
-            let selected_action = dist.sample(&mut rng);
-            let mv = state.curr_move_grid.get_move(selected_action);
-            println!("{:?}", mv);
-        }
-    }
-}
-
-fn main() {
-    //play_tictactoe();
-    //train_scrabble();
-    //play_scrabble();
     let words = read_vocabulary();
     let mut build = SetBuilder::memory();
     build.extend_iter(words).unwrap();
@@ -169,6 +111,13 @@ fn main() {
     let vocab = Rc::new(vocab);
     let game = ScrabbleGame::new(2, vocab);
     ScrabbleUI::run(game).expect("Something went wrong");
+}
+
+fn main() {
+    //play_tictactoe();
+    //train_scrabble();
+    play_scrabble();
+    
 }
 
 // 15x15x26
