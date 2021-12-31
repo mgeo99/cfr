@@ -88,7 +88,7 @@ impl ScrabbleUI {
         move_store: ListStore,
     ) -> Self {
         Self {
-            agent: ScrabbleAgent::from_file("./strategies/scrabble.ckpt"),
+            agent: ScrabbleAgent::new(Default::default()),//ScrabbleAgent::from_file("./strategies/scrabble.ckpt"),
             board,
             relm_window: parent,
             state: initial_state,
@@ -329,7 +329,10 @@ impl Update for ScrabbleUI {
 
                 self.update(ScrabbleMsg::Tick);
             }
-            ScrabbleMsg::SelectMove(move_id) => self.handle_move_selected(move_id),
+            ScrabbleMsg::SelectMove(move_id) =>  {
+                self.handle_move_selected(move_id);
+                self.state.board.print_board();
+            },
             ScrabbleMsg::GenerateMoves => {
                 self.handle_generate_moves();
                 timeout(self.relm.stream(), 1, || ScrabbleMsg::Tick)

@@ -89,6 +89,12 @@ fn read_vocabulary() -> Vec<String> {
     words
 }
 
+/// Builds the scrabble dictionary into a GADDAG. The fst crate only constructs a 
+/// DAG, so we need to handle the case for suffix searches as well
+fn build_dictionary(vocab: Vec<String>) {
+    
+}
+
 fn train_scrabble() {
     let words = read_vocabulary();
 

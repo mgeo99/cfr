@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use fst::Automaton;
 
-use super::constraints::ConstrainedTile;
+use super::constraint::Constraint;
 use super::rack::Rack;
 use super::util::Letter;
 
@@ -32,7 +32,7 @@ pub struct WordSearcherState {
 #[derive(Debug, Clone)]
 pub struct WordSearcher<'a> {
     /// The line we are searching for words on with constraints
-    pub line: &'a [ConstrainedTile],
+    pub line: &'a [Constraint],
     /// Letters we have remaining in our rack (separated from whitespace)
     pub rack: Rack,
     /// Minimum length for anything to be considered a word
@@ -53,7 +53,7 @@ impl<'a> Automaton for WordSearcher<'a> {
     fn is_match(&self, state: &Self::State) -> bool {
         if let Some(state) = state {
             // The word we are currently on does not match whats in the line
-            if let Some(ConstrainedTile::Filled(_)) = self.line.get(state.position) {
+            if let Some(Constraint::Filled(_)) = self.line.get(state.position) {
                 false
             } else {
                 // Cannot match if we haven't tested any tiles
@@ -80,13 +80,13 @@ impl<'a> Automaton for WordSearcher<'a> {
                 None => None,
                 Some(tile) => match tile {
                     // Blanks can be used to match any letter
-                    ConstrainedTile::Filled(Letter::Blank) => Some(WordSearcherState {
+                    Constraint::Filled(Letter::Blank) => Some(WordSearcherState {
                         position: state.position + 1,
                         blank_assignments: state.blank_assignments.clone(),
                         rack: state.rack.clone(),
                     }),
                     // The letter must match the tile we accept
-                    &ConstrainedTile::Filled(Letter::Letter(l)) => {
+                    &Constraint::Filled(Letter::Letter(l)) => {
                         if l == letter {
                             Some(WordSearcherState {
                                 position: state.position + 1,
@@ -98,7 +98,7 @@ impl<'a> Automaton for WordSearcher<'a> {
                         }
                     }
                     // Consume the letter from our tray or use a blank. If we cant do either then return None again
-                    &ConstrainedTile::Letters(letter_set) => {
+                    &Constraint::Empty(letter_set) => {
                         if letter_set.is_empty() {
                             None
                         } else {
@@ -142,18 +142,18 @@ impl<'a> Automaton for WordSearcher<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scrabble::letter_set::LetterSet;
+    use crate::scrabble::constraint::letter_set::LetterSet;
     use crate::scrabble::word_search::WordSearcher;
 
     #[test]
     fn test_simple_search() {
         let line = [
-            ConstrainedTile::Letters("abdfghklmopqstx".chars().collect()),
-            ConstrainedTile::Letters("abdefghijklmnopqrstuwxyz".chars().collect()),
-            ConstrainedTile::Letters("a".chars().collect()),
-            ConstrainedTile::Letters(LetterSet::any()),
-            ConstrainedTile::Letters(LetterSet::any()),
-            ConstrainedTile::Letters(LetterSet::any()),
+            Constraint::Empty("abdfghklmopqstx".chars().collect()),
+            Constraint::Empty("abdefghijklmnopqrstuwxyz".chars().collect()),
+            Constraint::Empty("a".chars().collect()),
+            Constraint::Empty(LetterSet::any()),
+            Constraint::Empty(LetterSet::any()),
+            Constraint::Empty(LetterSet::any()),
         ];
 
         let automaton = WordSearcher {

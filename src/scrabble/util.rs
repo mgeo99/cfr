@@ -14,7 +14,7 @@ impl Direction {
         static DIRS: [Direction; 2] = [Direction::Across, Direction::Down];
         DIRS.iter()
     }
-
+    #[inline]
     pub fn flip(&self) -> Self {
         match self {
             Self::Across => Self::Down,
@@ -79,6 +79,10 @@ impl Position {
                 }
             }
         }
+    }
+    #[inline]
+    pub fn is_center(&self) -> bool {
+        self.row == BOARD_SIZE / 2 && self.col == BOARD_SIZE / 2
     }
     /// Returns all the valid adjacent positions to this position
     pub fn adjacent(&self) -> Vec<Position> {

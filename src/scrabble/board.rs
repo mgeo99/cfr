@@ -8,7 +8,8 @@ use std::path::Path;
 use fst::{IntoStreamer, Set, Streamer};
 
 use super::bag::Bag;
-use super::constraints::ConstraintBoard;
+use super::constraint::grid::ConstraintGrid;
+use super::constraint::ConstraintQuery;
 use super::rack::Rack;
 use super::util::{Direction, Letter, Move, Position, SquareEffect};
 use super::word_search::{BlankAssignmentList, WordSearcher};
@@ -66,7 +67,7 @@ impl ScrabbleBoard {
                     "DL" => Tile::Special(SquareEffect::DoubleLetter),
                     "DW" => Tile::Special(SquareEffect::TripleLetter),
                     "CN" => Tile::Special(SquareEffect::Center),
-                    c => Tile::Letter(Letter::Letter(c.chars().nth(0).unwrap()))
+                    c => Tile::Letter(Letter::Letter(c.chars().nth(0).unwrap())),
                 }
             }
         }
@@ -74,9 +75,8 @@ impl ScrabbleBoard {
         Self {
             state,
             blanks: HashSet::new(),
-            placements: vec![]
+            placements: vec![],
         }
-
     }
 
     /// Places the current word on the board. Assumes that the word is a valid placement.
@@ -149,36 +149,6 @@ impl ScrabbleBoard {
         cross_sums
     }
 
-    /// Checks if a move can be played at all given the current rack and board state
-    pub fn is_move_possible(&self, rack: &Rack, vocab: &Set<impl AsRef<[u8]> + Sync>) -> bool {
-        let cb_across = ConstraintBoard::build(self, Direction::Across, vocab);
-        let cb_down = ConstraintBoard::build(self, Direction::Down, vocab);
-
-        let across_cands = cb_across.get_candidate_slices();
-        let down_cands = cb_down.get_candidate_slices();
-
-        let all_cands = across_cands.chain(down_cands).collect::<Vec<_>>();
-        if all_cands.len() == 0 {
-            return false;
-        }
-
-        // Check if any candidate can result in a valid move
-        let has_moves = all_cands.into_iter().any(|(_, line, min_length)| {
-            let searcher = WordSearcher {
-                line,
-                min_length,
-                rack: rack.clone(),
-            };
-            let mut matches = vocab.search_with_state(searcher).into_stream();
-            if let Some(_) = matches.next() {
-                return true;
-            }
-            false
-        });
-
-        has_moves
-    }
-
     /// Calculates all possible moves. Moves are not returned in any particular order so when presenting
     /// possible candidates to a player, be sure to sort them
     pub fn calculate_moves(
@@ -188,19 +158,25 @@ impl ScrabbleBoard {
         bag: &Bag,
     ) -> Vec<Move> {
         let cross_sums = self.calculate_cross_sums(bag);
-        let cb_across = ConstraintBoard::build(self, Direction::Across, vocab);
-        let cb_down = ConstraintBoard::build(self, Direction::Down, vocab);
-        let across_cands = cb_across.get_candidate_slices();
-        let down_cands = cb_down.get_candidate_slices();
+        let cb_down = ConstraintGrid::build(self, Direction::Down, vocab);
+        let cb_across = ConstraintGrid::build(self, Direction::Across, vocab);
+        
+        println!("Across Queries");
+        let across_cands = cb_across.compute_queries();
+        println!("Down Queries");
+        let down_cands = cb_down.compute_queries();
 
-        let all_cands = across_cands.chain(down_cands).collect::<Vec<_>>();
+        let all_cands = across_cands
+            .into_iter()
+            .chain(down_cands.into_iter())
+            .collect::<Vec<_>>();
 
         all_cands
             .into_par_iter()
-            .flat_map(|(pos, line, min_length)| {
+            .flat_map(|query| {
                 let searcher = WordSearcher {
-                    line,
-                    min_length,
+                    line: query.constraints,
+                    min_length: query.min_length,
                     rack: rack.clone(),
                 };
 
@@ -221,12 +197,12 @@ impl ScrabbleBoard {
                     }
 
                     let mut new_move = Move {
-                        dir: pos.1,
-                        pos: pos.0,
+                        dir: query.dir,
+                        pos: query.pos,
                         word: word_chars.into_iter().collect(),
                         score: 0,
                     };
-                    let cross_sums = match pos.1 {
+                    let cross_sums = match query.dir {
                         Direction::Across => &cross_sums[0],
                         _ => &cross_sums[1],
                     };
@@ -320,6 +296,22 @@ impl ScrabbleBoard {
             Tile::Letter(_) => true,
             _ => false,
         }
+    }
+
+    pub fn print_board(&self) {
+        println!("======= BOARD =======");
+        for i in 0..BOARD_SIZE {
+            for j in 0..BOARD_SIZE {
+                let pos = Position {row: i, col: j};
+                match self[pos] {
+                    Tile::Letter(Letter::Letter(l)) => print!("{}", l),
+                    _ => print!(" ")
+                }
+            }
+            print!("\n");
+        }
+
+        println!("=====================")
     }
 }
 

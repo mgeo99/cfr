@@ -5,7 +5,7 @@ use crate::scrabble::util::Position;
 use crate::scrabble::BOARD_SIZE;
 
 use super::board::{ScrabbleBoard, Tile};
-use super::letter_set::LetterSet;
+use super::constraint::letter_set::LetterSet;
 use super::util::{Direction, Letter};
 
 #[derive(Debug, Clone, Copy)]
@@ -57,16 +57,22 @@ impl ConstraintBoard {
             let mut tile_buffer = [Tile::Empty; BOARD_SIZE];
             let mut curr_pos = pos.clone();
 
+            // Copy the tiles on the board at the current position
+            // Note: This may be transposed if we are going in the opposite direction
             for j in 0..BOARD_SIZE {
                 tile_buffer[j] = curr_board[curr_pos].clone();
                 curr_pos[dir] += 1;
             }
-
             let mut constraint_buffer = [ConstrainedTile::Letters(LetterSet::empty()); BOARD_SIZE];
+
+            // Fill the constraints using the current tiles on the board
             fill_constraints(&tile_buffer, &mut constraint_buffer, vocab);
+            
             for j in 0..BOARD_SIZE {
                 state[j][i] = constraint_buffer[j];
             }
+
+            // Go to the next row
             pos[dir.flip()] += 1;
         }
 
@@ -84,7 +90,42 @@ impl ConstraintBoard {
         true
     }
 
-    /// Gets the ranges of tiles that should be searched over to find vocabulary words
+    /// Generates all of the constraint sequences that can should be used as a search query
+    /// in the given direction.
+    /// We need to generate several queries for our fst to find matches for. The queries we generate should
+    /// be analagous to the types of queries in the original paper: https://www.cs.cmu.edu/afs/cs/academic/class/15451-s06/www/lectures/scrabble.pdf
+    /// We first need to generate queries that imitate expand-left (aka find all possible left words)
+    /// and then do the same for expand right. The slices we emit follow the following format:
+    /// (Pos, Slice, min_length)
+    ///
+    /// Lets say we have a row with the following constraints:
+    ///     ? - Anything can go there
+    ///     <c> - That character MUST be present
+    ///         [?, ?, H, E, L, L, ?, ?, C, ?, T]
+    ///         [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    ///     Just to get your imagination going lets pretend that our vocab has HELLO and CAT as words. Lets also assume that
+    ///     the cross checks that formed these constraints are correct
+    /// First, we need to find the anchor positions for the row.
+    /// An anchor position is blank with one with an adjacent tile that we can use to start a new word. The rules of scrabble say all new words
+    /// (except the first one) must be built off another character
+    /// For this particular row, the anchors are: 1, 6, 7 and 9.
+    /// Now we need to find the MINIMUM length for any words find off of the anchor. We do this by scanning until we reach
+    /// another blank character
+    ///  This is so that when we go to do an automaton search, we
+    /// can mimic the extend-right behavior of the original paper all the way to the end of the line
+    /// So here are the minimum lengths of any words starting at the anchors in the example:
+    ///     1: 5 -> Go to the end of HELL
+    ///     6: 1 -> The next blank is immediately to the right
+    ///     7: 2 -> Also go to the blank before C
+    ///     9: 2 -> Go to the T and reach the end of the board
+    /// To simplify the candidate generation and leverage fst's automatons, once we compute these minimum lengths, all that's
+    /// left is to iteratively expand out to the left and just use the line starting at that new position as a candidate
+    /// The procedure for going to the left is as follows:
+    ///     1. Find the next blank space / beginning of the word we are anchored to
+    ///     2. Expand left until we hit the previous anchor position adding a slice at each position
+    ///     all the way to the end of the line as a candidate. Must also update the min-length to account for
+    ///     the length of this new word because our automaton impl treats the # of successful transitions as length meaning we are iteratively finding candidate words
+    ///         2a. Add this partial expansion to the list of candidates
     pub fn get_candidate_slices<'a>(
         &'a self,
     ) -> impl Iterator<Item = (ConstraintIndex, &[ConstrainedTile], usize)> + 'a {
@@ -121,13 +162,7 @@ impl ConstraintBoard {
                 // find minimum length to be attached: first square that is filled or that have constraints (some perpendicular word)
                 let mut end = place.clone();
                 while end.0[self.dir.flip()] < BOARD_SIZE {
-                    if is_empty
-                        && end.0
-                            == (Position {
-                                row: BOARD_SIZE / 2,
-                                col: BOARD_SIZE / 2,
-                            })
-                    {
+                    if is_empty && end.0.is_center() {
                         break;
                     }
                     match line_slice[end.0[self.dir.flip()]] {
@@ -238,6 +273,7 @@ pub fn fill_constraints(
     constraints: &mut [ConstrainedTile],
     vocab: &Set<impl AsRef<[u8]> + Sync>,
 ) {
+    // Avoid a bunch of allocations b/c they can become very expensive
     let mut prefix = Vec::with_capacity(BOARD_SIZE);
     let mut suffix = Vec::with_capacity(BOARD_SIZE);
     constraints
@@ -247,19 +283,6 @@ pub fn fill_constraints(
             *constraint = match line[i] {
                 Tile::Letter(l) => ConstrainedTile::Filled(l),
                 _ => {
-                    /*
-                        Even though the search routine upstream relies on these constraints,
-                        do we actually need this to still have valid moves???
-
-                        Tiles that are filled will still have the constraint in place that they must match
-                        that letter EXACTLY. Other tiles (like what is being accounted for here) can essentially
-                        be set to just anything because it is possible we will run into another tile with a letter
-                        already there that MUST match. Since words are all or nothing in this context we can't just place
-                        a random letter down. So implicitly we will find the right word even without a constraint
-                        based on our vocabulary
-                    */
-
-                    // Otherwise scan for letters using prefix/suffix
                     // Find a prefix
                     prefix.clear();
                     for j in (0..i).rev() {
@@ -284,7 +307,8 @@ pub fn fill_constraints(
                             prefix: &prefix,
                             suffix: &suffix,
                         };
-                        // Use the vocabulary to scan for valid letters
+                        // Use the vocabulary to scan for valid letters. If we want to place a new word that lies
+                        // directly adjacent to the current word. All those new words formed along the edge must be valid
                         let mut matches = vocab.search_with_state(automaton).into_stream();
                         let mut letter_set = LetterSet::empty();
                         while let Some((_, state)) = matches.next() {
